@@ -236,6 +236,190 @@ A policy can reference this:
 
 ---
 
+## `assess replay` — Policy Backtesting
+
+### One-line promise
+
+**Re-run a policy against historical evidence packs to see what would have changed — before deploying.**
+
+### Problem
+
+Policies evolve. Thresholds tighten, new rules appear, old rules get removed. Today, changing a policy is a leap of faith — you edit the YAML, deploy it, and discover the consequences in production. `assess replay` eliminates this by backtesting a policy against every historical evidence pack, showing exactly which past decisions would flip.
+
+This is the equivalent of backtesting a trading strategy against historical data. You never deploy a strategy without backtesting; you should never deploy a policy without replaying.
+
+### CLI
+
+```
+assess replay --policy <POLICY> --packs <GLOB|DIR> [OPTIONS]
+
+Options:
+  --policy <PATH|ID>     New/candidate policy to test
+  --policy-id <ID>       Policy ID (resolved from search path)
+  --packs <GLOB|DIR>     Evidence packs to replay against (glob or directory)
+  --compare              Compare replay decisions against original decisions stored in packs
+  --filter-tool <TOOL>   Only replay packs containing artifacts from this tool
+  --json                 JSON output (default: human summary)
+```
+
+`--packs` accepts a glob pattern (`evidence/2025-*/*.pack`) or a directory (recurse for `.pack` files). Each pack must contain at least one assessable artifact (tool reports with `version`/`outcome`/`refusal` fields).
+
+`--compare` requires that each pack contains an original `assess` decision (a file with `"version": "assess.v0"`). Packs without an original decision are skipped with a warning.
+
+### Exit codes
+
+`0` no flips detected (or `--compare` not used) | `1` flips detected | `2` refusal
+
+### Output (JSON)
+
+```json
+{
+  "version": "assess_replay.v0",
+  "policy": {
+    "id": "loan_tape.monthly.v2",
+    "version": 2,
+    "sha256": "sha256:d4e5f6..."
+  },
+  "packs_scanned": 24,
+  "packs_assessed": 22,
+  "packs_skipped": 2,
+  "results": [
+    {
+      "pack": "evidence/2025-11/pack-a7f3b2.pack",
+      "pack_sha256": "sha256:...",
+      "decision_band": "PROCEED_WITH_RISK",
+      "confidence_floor": 0.48,
+      "risk_factors": [
+        { "code": "PARTIAL_SCHEMA_OVERLAP", "source_tool": "shape" }
+      ]
+    },
+    {
+      "pack": "evidence/2025-10/pack-b8c4d3.pack",
+      "pack_sha256": "sha256:...",
+      "decision_band": "PROCEED",
+      "confidence_floor": 1.0,
+      "risk_factors": []
+    }
+  ],
+  "summary": {
+    "PROCEED": 18,
+    "PROCEED_WITH_RISK": 3,
+    "ESCALATE": 1,
+    "BLOCK": 0
+  },
+  "compare": null,
+  "refusal": null
+}
+```
+
+### `--compare` output
+
+When `--compare` is provided, the output includes a `compare` block showing how the new policy's decisions differ from the original decisions stored in each pack:
+
+```json
+{
+  "compare": {
+    "flips": 3,
+    "unchanged": 19,
+    "details": [
+      {
+        "pack": "evidence/2025-09/pack-c1d2e3.pack",
+        "original_band": "PROCEED",
+        "replay_band": "PROCEED_WITH_RISK",
+        "direction": "stricter",
+        "new_risk_factors": [
+          { "code": "PARTIAL_SCHEMA_OVERLAP", "source_tool": "shape" }
+        ]
+      },
+      {
+        "pack": "evidence/2025-07/pack-f4a5b6.pack",
+        "original_band": "ESCALATE",
+        "replay_band": "PROCEED_WITH_RISK",
+        "direction": "more_lenient",
+        "removed_risk_factors": [
+          { "code": "DIFFUSE_CHANGE", "source_tool": "rvl" }
+        ]
+      },
+      {
+        "pack": "evidence/2025-06/pack-d7e8f9.pack",
+        "original_band": "PROCEED",
+        "replay_band": "BLOCK",
+        "direction": "stricter",
+        "new_risk_factors": [
+          { "code": "UNHANDLED_CONDITION", "source_tool": "benchmark" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Flip `direction` values:
+- `stricter` — the new policy produces a more restrictive band (PROCEED → PROCEED_WITH_RISK, PROCEED → BLOCK, etc.)
+- `more_lenient` — the new policy produces a less restrictive band (ESCALATE → PROCEED_WITH_RISK, BLOCK → PROCEED, etc.)
+
+Band ordering for direction: PROCEED < PROCEED_WITH_RISK < ESCALATE < BLOCK.
+
+### Human output
+
+Without `--json`, `assess replay` prints a compact summary:
+
+```
+Policy: loan_tape.monthly.v2 (sha256:d4e5f6...)
+Packs:  22 assessed, 2 skipped
+
+  PROCEED            18  ████████████████████████████████████  82%
+  PROCEED_WITH_RISK   3  █████                                 14%
+  ESCALATE            1  ██                                     5%
+  BLOCK               0                                         0%
+
+Flips vs original (--compare):
+  ⬆ stricter     2  (PROCEED → PROCEED_WITH_RISK, PROCEED → BLOCK)
+  ⬇ more_lenient 1  (ESCALATE → PROCEED_WITH_RISK)
+  = unchanged   19
+```
+
+### Refusal codes (replay-specific)
+
+| Code | Trigger | Next step |
+|------|---------|-----------|
+| `E_NO_PACKS` | No packs found matching glob | Check path/glob |
+| `E_PACK_UNREADABLE` | Can't read or parse pack | Check pack integrity |
+| `E_NO_ARTIFACTS` | Pack contains no assessable artifacts | Check pack contents |
+| `E_NO_ORIGINAL` | `--compare` used but pack has no original decision | Remove `--compare` or use packs with decisions |
+
+Plus all standard `assess` refusal codes (`E_BAD_POLICY`, `E_AMBIGUOUS_POLICY`, etc.).
+
+### Usage examples
+
+```bash
+# Backtest a candidate policy against all 2025 evidence
+assess replay --policy loan_tape.monthly.v2 \
+  --packs "evidence/2025-*/" --json
+
+# Compare against original decisions to find flips
+assess replay --policy loan_tape.monthly.v2 \
+  --packs "evidence/2025-*/" --compare
+
+# Test only packs that include shape reports
+assess replay --policy loan_tape.monthly.v2 \
+  --packs evidence/ --filter-tool shape --compare
+
+# CI gate: fail if policy change would flip any historical decision
+assess replay --policy candidate.yaml --packs evidence/ --compare
+# exit code 1 if flips detected → PR reviewer sees the impact
+```
+
+### Why this matters
+
+1. **Testable policies.** Policies become code with a test suite — the evidence archive. You don't guess what a rule change does; you measure it.
+2. **Composes with `pack`.** Evidence packs are content-addressed and tamper-evident. `replay` inherits this: the inputs to replay are provably the same data that produced the original decisions.
+3. **Agent-native.** An agent tightening a policy threshold can run `assess replay --compare` before committing the change — a self-check before the policy goes live.
+4. **CI integration.** `exit code 1` on flips means a policy PR can be gated on historical impact analysis. Reviewers see "this change would have blocked 3 of 24 past reconciliations" before merging.
+5. **Deterministic.** Same packs + same candidate policy = same replay results. The replay itself is reproducible and auditable.
+
+---
+
 ## Refusal codes
 
 | Code | Trigger | Next step |
