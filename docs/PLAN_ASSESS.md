@@ -1,7 +1,8 @@
 # assess — Decision Framing
 
 ## One-line promise
-**Classify structured reports into deterministic decision bands — PROCEED, PROCEED_WITH_RISK, ESCALATE, or BLOCK — using versioned, declared policy rules.**
+
+**Deterministic decision classification over a complete spine evidence bundle — PROCEED, PROCEED_WITH_RISK, ESCALATE, or BLOCK — using versioned, declared policy rules evaluated against the whole bundle.**
 
 ---
 
@@ -17,15 +18,73 @@ Truth remains binary. Decisions are graded. `assess` does not change what is tru
 
 ---
 
+## Non-negotiables (engineering contract)
+
+These are not aspirations. They are the contract. If any are violated, assess is not assess yet.
+
+1. **Deterministic** — Same artifacts + same policy = same decision, byte-for-byte identical output. No randomness, no ambient state, no timestamps in the decision.
+2. **No expression evaluation** — v0 match surface is exact equality only. No numeric comparisons, no dot-path traversal, no CEL, no evalexpr. If a future version needs thresholds, it gets a new schema version.
+3. **No HashMap in JSON output** — All output uses `BTreeMap` or insertion-ordered serialization. Golden rule `no-hashmap-in-output.yml` enforced.
+4. **Policy is content-hashed** — The `sha256` field in the output must equal the SHA-256 of the policy file's raw bytes. If they diverge, the output is untrustworthy.
+5. **Every input accounted for** — `assess` never silently drops or ignores an artifact. Every provided artifact appears in `epistemic_basis`. Extra artifacts (beyond `requires`) are recorded but do not affect the decision.
+6. **One decision per invocation** — `assess` produces exactly one JSON object to stdout. No batching, no streaming, no multi-document output.
+7. **`#![forbid(unsafe_code)]`** — No unsafe blocks anywhere in the crate.
+
+---
+
+## Scope boundary
+
+### In scope (v0)
+
+- Load and validate YAML policy files (`policy.v0` schema)
+- Load and parse JSON spine artifacts
+- Derive tool names from artifact `version` fields
+- Validate `requires` completeness and tool uniqueness
+- Match the artifact bundle against ordered `when` clauses (exact equality)
+- Emit a single `assess.v0` JSON decision to stdout
+- Human-readable output mode (default)
+- Witness ledger integration (ambient recording, queryable subcommand)
+- operator.json self-description
+- spine-rules golden rule enforcement
+
+### Excluded (not assess's job)
+
+- Producing facts (that's `rvl`, `verify`, `shape`, `benchmark`)
+- Diffing datasets (that's `compare`)
+- Scoring extractions (that's `benchmark`)
+- Factory conflict resolution (separate tool, see PLAN_FACTORY.md)
+- Tournament ranking (consumers use raw `benchmark.summary.accuracy` after assess gates)
+- Arbitrary JSON ingestion (input domain is spine reports only)
+- Probabilistic or ML-based classification
+
+### Deferred (future versions)
+
+- **Expression evaluation (v1):** Numeric thresholds via CEL (`checks.schema_overlap.overlap_ratio >= 0.45`). Deferred because the narrowed v0 match surface makes expressions unnecessary — tools emit discrete `policy_signals` bands instead.
+- **Policy backtesting / replay (v1+):** Re-running a policy against historical evidence packs. Deferred because (a) `pack` has no corpus yet, and (b) the discrete match surface makes policy diffs trivially predictable by reading the YAML.
+- **`--validate` subcommand (v1):** Schema-validate a policy file without running an assessment. Low-priority convenience; `E_BAD_POLICY` on real invocations serves the same purpose.
+- **Policy inheritance / composition:** Policies that extend or override other policies. Adds complexity without clear need in v0.
+
+### v0 bar
+
+`assess` is done when: a clean `shape+rvl+verify` bundle assessed against the loan tape policy produces PROCEED, a bundle with `E_DIFFUSE` produces ESCALATE, the witness ledger records both, and the output passes `pack seal` as a valid member artifact.
+
+---
+
 ## Non-goals
 
 `assess` is NOT:
 - A truth tool (that's `rvl`, `verify`, `shape`)
 - A diff tool (that's `compare`)
 - A scoring tool (that's `benchmark`)
+- A general JSON rules engine
+- The factory's conflict resolver
 - Probabilistic or ML-based
 
 It does not produce facts. It classifies facts into decisions.
+
+---
+
+# Part I — Design Specification
 
 ---
 
@@ -35,20 +94,24 @@ It does not produce facts. It classifies facts into decisions.
 assess <ARTIFACT>... --policy <POLICY> [OPTIONS]
 
 Arguments:
-  <ARTIFACT>...          Spine reports to assess (shape, rvl, verify, verify cross, benchmark, compare, fingerprint results)
+  <ARTIFACT>...          Spine reports to assess (shape, rvl, verify, benchmark, fingerprint results)
 
 Options:
   --policy <PATH|ID>     Decision policy file or ID
   --policy-id <ID>       Policy ID (resolved from search path)
+  --json                 JSON output (default: human-readable)
+  --no-witness           Suppress witness ledger recording
 ```
 
-At least one artifact and a policy are required. `--policy` and `--policy-id` are mutually exclusive; providing both is a refusal (`E_AMBIGUOUS_POLICY`).
+One or more artifacts and a policy are required at the CLI level, but the policy's `requires` list must be fully satisfied or `assess` refuses with `E_INCOMPLETE_BASIS`.
+
+`--policy` and `--policy-id` are mutually exclusive; providing both is a refusal (`E_AMBIGUOUS_POLICY`).
 
 ### Policy resolution order
 
 1. `ASSESS_POLICY_PATH` env var (colon-separated directories)
 2. Built-in policies bundled with the binary
-3. `~/.cmdrvl/policies/` if present
+3. `~/.epistemic/policies/` if present
 
 ### Exit codes
 
@@ -76,24 +139,45 @@ No soft synonyms. No percentages without definition.
 ```json
 {
   "version": "assess.v0",
-  "decision_band": "PROCEED_WITH_RISK",
-  "confidence_floor": 0.48,
+  "decision_band": "ESCALATE",
   "policy": {
     "id": "loan_tape.monthly.v1",
     "version": 1,
     "sha256": "sha256:a1b2c3..."
   },
+  "matched_rule": "diffuse_requires_review",
+  "required_tools": ["shape", "rvl", "verify"],
+  "observed_tools": ["shape", "rvl", "verify"],
   "risk_factors": [
     {
-      "code": "PARTIAL_SCHEMA_OVERLAP",
-      "source_tool": "shape",
-      "detail": "shape INCOMPATIBLE with 48% column overlap (above policy floor of 45%)"
+      "code": "DIFFUSE_CHANGE",
+      "source_tool": "rvl",
+      "detail": "rvl refused with E_DIFFUSE; human review required"
     }
   ],
   "epistemic_basis": [
-    { "artifact": "shape.report.json", "version": "shape.v0", "outcome": "INCOMPATIBLE", "decision_band": "PROCEED_WITH_RISK" },
-    { "artifact": "rvl.report.json", "version": "rvl.v0", "outcome": "REAL_CHANGE", "decision_band": "PROCEED" },
-    { "artifact": "verify.report.json", "version": "verify.v0", "outcome": "PASS", "decision_band": "PROCEED" }
+    {
+      "artifact": "shape.report.json",
+      "tool": "shape",
+      "version": "shape.v0",
+      "outcome": "COMPATIBLE",
+      "policy_signals": { "compatibility_band": "FULL" }
+    },
+    {
+      "artifact": "rvl.report.json",
+      "tool": "rvl",
+      "version": "rvl.v0",
+      "outcome": null,
+      "policy_signals": {},
+      "refusal": { "code": "E_DIFFUSE" }
+    },
+    {
+      "artifact": "verify.report.json",
+      "tool": "verify",
+      "version": "verify.v0",
+      "outcome": "PASS",
+      "policy_signals": {}
+    }
   ],
   "refusal": null
 }
@@ -103,75 +187,77 @@ No soft synonyms. No percentages without definition.
 
 ## Policy file schema (`policy.v0`)
 
+A policy is not a model. It is a deterministic rule set over a declared basis, versioned and auditable.
+
 ```yaml
 schema_version: 1
 policy_id: loan_tape.monthly.v1
 policy_version: 1
 description: "Monthly loan tape reconciliation policy"
+requires:
+  - shape
+  - rvl
+  - verify
 
 rules:
-  - name: shape_compatible
-    if:
-      tool: shape
-      outcome: COMPATIBLE
+  - name: clean_reconciliation
+    when:
+      shape:
+        outcome: COMPATIBLE
+      rvl:
+        outcome_in: [REAL_CHANGE, NO_REAL_CHANGE]
+      verify:
+        outcome: PASS
     then:
       decision_band: PROCEED
 
   - name: partial_overlap_acceptable
-    if:
-      tool: shape
-      outcome: INCOMPATIBLE
-      condition: "checks.schema_overlap.overlap_ratio >= 0.45"
+    when:
+      shape:
+        outcome: INCOMPATIBLE
+        signals:
+          compatibility_band: PARTIAL
+      rvl:
+        outcome_in: [REAL_CHANGE, NO_REAL_CHANGE]
+      verify:
+        outcome: PASS
     then:
       decision_band: PROCEED_WITH_RISK
       risk_code: PARTIAL_SCHEMA_OVERLAP
-      confidence_metric: "checks.schema_overlap.overlap_ratio"
-
-  - name: rvl_real_change
-    if:
-      tool: rvl
-      outcome: REAL_CHANGE
-    then:
-      decision_band: PROCEED
-
-  - name: rvl_no_real_change
-    if:
-      tool: rvl
-      outcome: NO_REAL_CHANGE
-    then:
-      decision_band: PROCEED
 
   - name: diffuse_requires_review
-    if:
-      tool: rvl
-      refusal: E_DIFFUSE
+    when:
+      shape:
+        outcome: COMPATIBLE
+      rvl:
+        refusal: E_DIFFUSE
+      verify:
+        outcome: PASS
     then:
       decision_band: ESCALATE
       risk_code: DIFFUSE_CHANGE
 
-  - name: moderate_missingness
-    if:
-      tool: rvl
-      refusal: E_MISSINGNESS
-      condition: "refusal.detail.missing_old < 0.8 and refusal.detail.missing_new < 0.8"
+  - name: tolerable_missingness
+    when:
+      shape:
+        outcome: COMPATIBLE
+      rvl:
+        refusal: E_MISSINGNESS
+        signals:
+          missingness_band: TOLERABLE
+      verify:
+        outcome: PASS
     then:
       decision_band: PROCEED_WITH_RISK
       risk_code: MISSINGNESS_TOLERATED
 
   - name: verify_fail_requires_review
-    if:
-      tool: verify
-      outcome: FAIL
+    when:
+      verify:
+        outcome: FAIL
     then:
       decision_band: ESCALATE
       risk_code: VERIFY_FAIL
-
-  - name: verify_pass
-    if:
-      tool: verify
-      outcome: PASS
-    then:
-      decision_band: PROCEED
 
   - name: default_block
     default: true
@@ -182,42 +268,89 @@ rules:
 
 ---
 
+## Policy signals
+
+To keep `assess` narrow without losing useful nuance, tools that currently expose only raw metrics add **discrete, tool-owned `policy_signals`**. `assess` may match these exact values, but it does not compare raw numbers or traverse arbitrary JSON.
+
+- `shape.policy_signals.compatibility_band`: `FULL | PARTIAL | BROKEN`
+- `rvl.policy_signals.missingness_band`: `TOLERABLE | SEVERE` (only when `refusal.code = E_MISSINGNESS`)
+- `verify.policy_signals.severity_band`: `CLEAN | WARN_ONLY | ERROR_PRESENT`
+- `benchmark.policy_signals.quality_band`: `HIGH | ACCEPTABLE | LOW`
+
+This keeps the line clean:
+- the producing tool owns the raw metrics and how they collapse into a stable band
+- `assess` only combines discrete states across the full bundle
+
+### Policy rules using signals
+
+```yaml
+  - name: partial_overlap_acceptable
+    when:
+      shape:
+        outcome: INCOMPATIBLE
+        signals:
+          compatibility_band: PARTIAL
+      rvl:
+        outcome_in: [REAL_CHANGE, NO_REAL_CHANGE]
+      verify:
+        outcome: PASS
+    then:
+      decision_band: PROCEED_WITH_RISK
+      risk_code: PARTIAL_SCHEMA_OVERLAP
+
+  - name: cross_artifact_warn_only
+    when:
+      verify:
+        outcome: FAIL
+        signals:
+          severity_band: WARN_ONLY
+    then:
+      decision_band: PROCEED_WITH_RISK
+      risk_code: CROSS_ARTIFACT_WARNINGS
+
+  - name: benchmark_low_accuracy
+    when:
+      benchmark:
+        signals:
+          quality_band: LOW
+    then:
+      decision_band: BLOCK
+      risk_code: EXTRACTION_QUALITY_UNACCEPTABLE
+```
+
+---
+
 ## Tool name derivation
 
-Spine tool outputs carry a `version` field (e.g., `rvl.v0`, `verify_cross.v0`, `benchmark.v0`) but no explicit `tool` field. `assess` derives the tool name by stripping the `.v<N>` suffix from the `version` field: `shape.v0` -> `shape`, `verify_cross.v0` -> `verify_cross`. Non-spine reports with an explicit `tool` field use that directly.
+Spine tool outputs carry a `version` field (e.g., `rvl.v0`, `verify.v0`, `benchmark.v0`) but no explicit `tool` field. `assess` derives the tool name by stripping the `.v<N>` suffix from the `version` field: `shape.v0` → `shape`, `verify.v0` → `verify`, `benchmark.v0` → `benchmark`. This is temporary protocol debt; the long-term contract should add explicit `tool` to every spine output.
 
 ## Rule evaluation
 
-- Each input artifact is evaluated independently against the rule set
-- For each artifact: rules are evaluated in order; the first rule whose `tool` matches and whose `outcome`/`refusal`/`condition` matches wins
-- The overall `decision_band` is the **most restrictive** across all per-artifact decisions: BLOCK > ESCALATE > PROCEED_WITH_RISK > PROCEED
-- All per-artifact decisions are recorded in `epistemic_basis`; risk factors from non-PROCEED decisions are collected in `risk_factors`
-- `condition` fields are simple expressions evaluated against the artifact's JSON output (dot-path access, comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or`)
-- `default: true` marks the fallback rule (strongly recommended, must be last)
+- At most one artifact per tool is allowed; duplicates are a refusal (`E_DUPLICATE_TOOL`)
+- The policy's `requires` list must be a subset of observed tools; otherwise `assess` refuses with `E_INCOMPLETE_BASIS`
+- Rules are evaluated in order against the **whole bundle**; the first rule whose `when` clause matches the bundle wins
+- A `when` clause may match only:
+  - `outcome`
+  - `outcome_in`
+  - `refusal`
+  - exact-equality `signals` under `policy_signals`
+- `assess v0` does **not** evaluate arbitrary expressions, numeric thresholds, or dot-path comparisons
+- `default: true` marks the fallback rule (strongly recommended and must be last when present)
 - All rules must specify `decision_band`; `risk_code` is required for non-PROCEED bands
-- If an artifact's tool doesn't match any rule (and no default exists), `assess` refuses with `E_MISSING_RULE`
-
-## confidence_floor
-
-When multiple artifacts are assessed, `confidence_floor` is the minimum per-artifact score:
-- PROCEED -> 1.0
-- PROCEED_WITH_RISK -> the value of the `confidence_metric` field declared in the matching policy rule, evaluated as a dot-path into the artifact's JSON and clamped to `[0, 1]`. If no `confidence_metric`, defaults to 0.5
-- ESCALATE -> 0.0
-- BLOCK -> 0.0
-
-The floor is `min()` across all per-artifact scores. It answers "how clean is the weakest link in the epistemic basis?"
+- If no rule matches (and no default exists), `assess` refuses with `E_MISSING_RULE`
+- Tournament ranking is explicitly out of scope; `assess` only gates
 
 ---
 
 ## Extensibility
 
-`assess` does not hardcode which tools it understands. Policy rules match on the `tool` field in the input JSON. Any structured report with a `version`, `outcome`, and/or `refusal` field can be assessed. For example, a factory conflict resolution engine might emit:
+`assess` does not hardcode which tools it understands. Policy rules match on tool keys in the `when` clause. Any structured report with a `version` and `outcome` and/or `refusal` field can be assessed. For example, a factory conflict resolution engine might emit:
 
 ```json
 {
-  "tool": "conflict",
+  "version": "conflict.v0",
   "outcome": "DISPUTED",
-  "detail": { "column": "noi", "competing_values": 2, "tolerance_exceeded": true }
+  "policy_signals": { "tolerance_exceeded": true }
 }
 ```
 
@@ -225,10 +358,11 @@ A policy can reference this:
 
 ```yaml
   - name: conflict_unresolved
-    if:
-      tool: conflict
-      outcome: DISPUTED
-      condition: "detail.tolerance_exceeded == true"
+    when:
+      conflict:
+        outcome: DISPUTED
+        signals:
+          tolerance_exceeded: true
     then:
       decision_band: ESCALATE
       risk_code: CONFLICT_UNRESOLVED
@@ -236,199 +370,15 @@ A policy can reference this:
 
 ---
 
-## `assess replay` — Policy Backtesting
+## What this changes about refusals
 
-### One-line promise
+Refusals do not change. What changes: refusals become inputs to `assess`, not terminal states.
 
-**Re-run a policy against historical evidence packs to see what would have changed — before deploying.**
+- `rvl → REFUSAL (E_DIFFUSE)` — epistemic truth unchanged
+- `assess` deterministically maps: `E_DIFFUSE → ESCALATE`
+- `E_MISSINGNESS` with `policy_signals.missingness_band = TOLERABLE` → `PROCEED_WITH_RISK`
 
-### Problem
-
-Policies evolve. Thresholds tighten, new rules appear, old rules get removed. Today, changing a policy is a leap of faith — you edit the YAML, deploy it, and discover the consequences in production. `assess replay` eliminates this by backtesting a policy against every historical evidence pack, showing exactly which past decisions would flip.
-
-This is the equivalent of backtesting a trading strategy against historical data. You never deploy a strategy without backtesting; you should never deploy a policy without replaying.
-
-### CLI
-
-```
-assess replay --policy <POLICY> --packs <GLOB|DIR> [OPTIONS]
-
-Options:
-  --policy <PATH|ID>     New/candidate policy to test
-  --policy-id <ID>       Policy ID (resolved from search path)
-  --packs <GLOB|DIR>     Evidence packs to replay against (glob or directory)
-  --compare              Compare replay decisions against original decisions stored in packs
-  --filter-tool <TOOL>   Only replay packs containing artifacts from this tool
-  --json                 JSON output (default: human summary)
-```
-
-`--packs` accepts a glob pattern (`evidence/2025-*/*.pack`) or a directory (recurse for `.pack` files). Each pack must contain at least one assessable artifact (tool reports with `version`/`outcome`/`refusal` fields).
-
-`--compare` requires that each pack contains an original `assess` decision (a file with `"version": "assess.v0"`). Packs without an original decision are skipped with a warning.
-
-### Exit codes
-
-`0` no flips detected (or `--compare` not used) | `1` flips detected | `2` refusal
-
-### Output (JSON)
-
-```json
-{
-  "version": "assess_replay.v0",
-  "policy": {
-    "id": "loan_tape.monthly.v2",
-    "version": 2,
-    "sha256": "sha256:d4e5f6..."
-  },
-  "packs_scanned": 24,
-  "packs_assessed": 22,
-  "packs_skipped": 2,
-  "results": [
-    {
-      "pack": "evidence/2025-11/pack-a7f3b2.pack",
-      "pack_sha256": "sha256:...",
-      "decision_band": "PROCEED_WITH_RISK",
-      "confidence_floor": 0.48,
-      "risk_factors": [
-        { "code": "PARTIAL_SCHEMA_OVERLAP", "source_tool": "shape" }
-      ]
-    },
-    {
-      "pack": "evidence/2025-10/pack-b8c4d3.pack",
-      "pack_sha256": "sha256:...",
-      "decision_band": "PROCEED",
-      "confidence_floor": 1.0,
-      "risk_factors": []
-    }
-  ],
-  "summary": {
-    "PROCEED": 18,
-    "PROCEED_WITH_RISK": 3,
-    "ESCALATE": 1,
-    "BLOCK": 0
-  },
-  "compare": null,
-  "refusal": null
-}
-```
-
-### `--compare` output
-
-When `--compare` is provided, the output includes a `compare` block showing how the new policy's decisions differ from the original decisions stored in each pack:
-
-```json
-{
-  "compare": {
-    "flips": 3,
-    "unchanged": 19,
-    "details": [
-      {
-        "pack": "evidence/2025-09/pack-c1d2e3.pack",
-        "original_band": "PROCEED",
-        "replay_band": "PROCEED_WITH_RISK",
-        "direction": "stricter",
-        "new_risk_factors": [
-          { "code": "PARTIAL_SCHEMA_OVERLAP", "source_tool": "shape" }
-        ]
-      },
-      {
-        "pack": "evidence/2025-07/pack-f4a5b6.pack",
-        "original_band": "ESCALATE",
-        "replay_band": "PROCEED_WITH_RISK",
-        "direction": "more_lenient",
-        "removed_risk_factors": [
-          { "code": "DIFFUSE_CHANGE", "source_tool": "rvl" }
-        ]
-      },
-      {
-        "pack": "evidence/2025-06/pack-d7e8f9.pack",
-        "original_band": "PROCEED",
-        "replay_band": "BLOCK",
-        "direction": "stricter",
-        "new_risk_factors": [
-          { "code": "UNHANDLED_CONDITION", "source_tool": "benchmark" }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Flip `direction` values:
-- `stricter` — the new policy produces a more restrictive band (PROCEED → PROCEED_WITH_RISK, PROCEED → BLOCK, etc.)
-- `more_lenient` — the new policy produces a less restrictive band (ESCALATE → PROCEED_WITH_RISK, BLOCK → PROCEED, etc.)
-
-Band ordering for direction: PROCEED < PROCEED_WITH_RISK < ESCALATE < BLOCK.
-
-### Human output
-
-Without `--json`, `assess replay` prints a compact summary:
-
-```
-Policy: loan_tape.monthly.v2 (sha256:d4e5f6...)
-Packs:  22 assessed, 2 skipped
-
-  PROCEED            18  ████████████████████████████████████  82%
-  PROCEED_WITH_RISK   3  █████                                 14%
-  ESCALATE            1  ██                                     5%
-  BLOCK               0                                         0%
-
-Flips vs original (--compare):
-  ⬆ stricter     2  (PROCEED → PROCEED_WITH_RISK, PROCEED → BLOCK)
-  ⬇ more_lenient 1  (ESCALATE → PROCEED_WITH_RISK)
-  = unchanged   19
-```
-
-### Refusal codes (replay-specific)
-
-| Code | Trigger | Next step |
-|------|---------|-----------|
-| `E_NO_PACKS` | No packs found matching glob | Check path/glob |
-| `E_PACK_UNREADABLE` | Can't read or parse pack | Check pack integrity |
-| `E_NO_ARTIFACTS` | Pack contains no assessable artifacts | Check pack contents |
-| `E_NO_ORIGINAL` | `--compare` used but pack has no original decision | Remove `--compare` or use packs with decisions |
-
-Plus all standard `assess` refusal codes (`E_BAD_POLICY`, `E_AMBIGUOUS_POLICY`, etc.).
-
-### Usage examples
-
-```bash
-# Backtest a candidate policy against all 2025 evidence
-assess replay --policy loan_tape.monthly.v2 \
-  --packs "evidence/2025-*/" --json
-
-# Compare against original decisions to find flips
-assess replay --policy loan_tape.monthly.v2 \
-  --packs "evidence/2025-*/" --compare
-
-# Test only packs that include shape reports
-assess replay --policy loan_tape.monthly.v2 \
-  --packs evidence/ --filter-tool shape --compare
-
-# CI gate: fail if policy change would flip any historical decision
-assess replay --policy candidate.yaml --packs evidence/ --compare
-# exit code 1 if flips detected → PR reviewer sees the impact
-```
-
-### Why this matters
-
-1. **Testable policies.** Policies become code with a test suite — the evidence archive. You don't guess what a rule change does; you measure it.
-2. **Composes with `pack`.** Evidence packs are content-addressed and tamper-evident. `replay` inherits this: the inputs to replay are provably the same data that produced the original decisions.
-3. **Agent-native.** An agent tightening a policy threshold can run `assess replay --compare` before committing the change — a self-check before the policy goes live.
-4. **CI integration.** `exit code 1` on flips means a policy PR can be gated on historical impact analysis. Reviewers see "this change would have blocked 3 of 24 past reconciliations" before merging.
-5. **Deterministic.** Same packs + same candidate policy = same replay results. The replay itself is reproducible and auditable.
-
----
-
-## Refusal codes
-
-| Code | Trigger | Next step |
-|------|---------|-----------|
-| `E_BAD_POLICY` | Policy file invalid | Fix policy syntax |
-| `E_AMBIGUOUS_POLICY` | Both `--policy` and `--policy-id` provided | Use one |
-| `E_UNKNOWN_POLICY` | Policy ID not found | Check policy path |
-| `E_BAD_ARTIFACT` | Can't parse input artifact | Check artifact format |
-| `E_MISSING_RULE` | No rule matched (no default) | Add default rule to policy |
+You preserve honesty and momentum.
 
 ---
 
@@ -447,34 +397,394 @@ assess shape.json rvl.json verify.json \
 # Minimal: just one report
 assess rvl.json --policy default.v0 > decision.json
 
-# assess -> pack: decision becomes part of evidence
+# assess → pack: decision becomes part of evidence
 assess shape.json rvl.json verify.json --policy loan_tape.monthly.v1 > decision.json
 pack seal shape.json rvl.json verify.json decision.json nov.lock.json dec.lock.json \
-  --note "Nov->Dec recon with decision" --output evidence/2025-12/
+  --note "Nov→Dec recon with decision" --output evidence/2025-12/
 ```
 
 ---
 
-## Implementation notes
+# Part II — Implementation Plan
 
-### Candidate crates
+---
+
+## Module skeleton
+
+```
+assess/
+├── Cargo.toml
+├── operator.json
+├── rules/
+│   ├── exit-code-range.yml
+│   ├── no-hashmap-in-output.yml
+│   └── witness-must-append.yml
+├── src/
+│   ├── main.rs                  — Thin entry point; calls lib::run(), maps exit code
+│   ├── lib.rs                   — Module tree, pub fn run(args) -> Result<ExitCode>
+│   ├── cli/
+│   │   ├── mod.rs               — Argument parsing and command routing
+│   │   ├── args.rs              — clap::Parser derive struct (Args)
+│   │   └── exit.rs              — ExitCode enum: Proceed(0), Attention(1), Stop(2)
+│   ├── policy/
+│   │   ├── mod.rs               — Policy loading orchestrator (resolve → read → parse → validate)
+│   │   ├── loader.rs            — Resolution order: env var → builtin → user dir
+│   │   ├── schema.rs            — Policy struct types (PolicyFile, Rule, WhenClause, ThenClause)
+│   │   └── validate.rs          — Schema validation (required fields, rule well-formedness, default-last)
+│   ├── bundle/
+│   │   ├── mod.rs               — Artifact bundle construction
+│   │   ├── artifact.rs          — Single artifact types (tool, version, outcome, refusal, signals)
+│   │   └── derive.rs            — Tool name derivation from version field (strip .v<N>)
+│   ├── evaluate/
+│   │   ├── mod.rs               — Evaluation orchestrator (check requires → match rules → emit decision)
+│   │   └── matcher.rs           — Rule matching: when-clause against bundle (exact equality)
+│   ├── output/
+│   │   ├── mod.rs               — Output dispatch (--json vs human)
+│   │   ├── json.rs              — assess.v0 JSON serialization (BTreeMap, ordered keys)
+│   │   └── human.rs             — Human-readable summary (decision band, risk factors, basis)
+│   ├── refusal/
+│   │   ├── mod.rs               — Refusal routing and envelope construction
+│   │   ├── codes.rs             — RefusalCode enum (E_BAD_POLICY, E_DUPLICATE_TOOL, etc.)
+│   │   └── payload.rs           — Refusal detail struct (code, trigger, next)
+│   └── witness/
+│       ├── mod.rs               — Witness ledger management (append, suppress)
+│       ├── ledger.rs            — JSONL append to ~/.epistemic/witness.jsonl
+│       ├── query.rs             — `assess witness` subcommand (query, last, count)
+│       └── record.rs            — Witness entry schema (tool="assess", inputs, decision, duration)
+├── tests/
+│   ├── golden_rules.rs          — spine-rules framework tests
+│   ├── policy_load.rs           — Policy loading and validation
+│   ├── bundle_construct.rs      — Artifact parsing and tool derivation
+│   ├── evaluate_rules.rs        — Rule matching and decision logic
+│   ├── refusal_suite.rs         — All 7 refusal codes exercised
+│   ├── output_schema.rs         — JSON output validates against assess.v0 schema
+│   ├── witness_suite.rs         — Witness append, suppress, query
+│   ├── e2e_pipeline.rs          — Full pipeline: artifacts → assess → pack-compatible output
+│   └── determinism.rs           — Same inputs → identical output (byte-level)
+└── fixtures/
+    ├── policies/
+    │   ├── loan_tape_monthly_v1.yaml
+    │   └── minimal_default_only.yaml
+    ├── artifacts/
+    │   ├── shape_compatible.json
+    │   ├── shape_incompatible_partial.json
+    │   ├── rvl_real_change.json
+    │   ├── rvl_no_real_change.json
+    │   ├── rvl_refusal_diffuse.json
+    │   ├── rvl_refusal_missingness_tolerable.json
+    │   ├── verify_pass.json
+    │   ├── verify_fail.json
+    │   └── benchmark_low.json
+    └── golden/
+        ├── proceed.json
+        ├── proceed_with_risk.json
+        ├── escalate.json
+        └── block.json
+```
+
+**Dependency direction:** `main → lib → cli → {policy, bundle, evaluate, output, refusal, witness}`. `evaluate` depends on `policy` and `bundle`. `output` depends on `evaluate` (for the decision type). No cycles.
+
+---
+
+## Data model invariants
+
+| ID | Invariant | Protects against |
+|----|-----------|------------------|
+| I01 | Same artifacts + same policy = same decision, byte-for-byte | Non-determinism from HashMap, timestamps, or ambient state |
+| I02 | The output `decision_band` equals exactly the `then.decision_band` of the matched rule | Aggregation bugs, implicit band promotion/demotion |
+| I03 | If any tool in `requires` is absent from the bundle, assess refuses `E_INCOMPLETE_BASIS` | Partial evidence producing false confidence |
+| I04 | At most one artifact per derived tool name in the bundle | Ambiguous state from duplicate tool reports |
+| I05 | Rules are evaluated in declaration order; first match wins | Order-dependent rule sets producing wrong decisions if evaluation order changes |
+| I06 | The default rule (if present) must be last; it always matches when reached | Rules after default being dead code |
+| I07 | `policy.sha256` in output = SHA-256 of the policy file's raw bytes | Stale or tampered policy hash making output unverifiable |
+| I08 | Every non-PROCEED decision band has a non-empty `risk_code` in the rule | Risk-bearing decisions with no machine-readable reason |
+| I09 | All refusals exit 2; BLOCK exits 2; PROCEED exits 0; PROCEED_WITH_RISK and ESCALATE exit 1 | Pipeline automation misinterpreting the decision |
+| I10 | Witness record is appended for every invocation unless `--no-witness` is set | Lost audit trail for production decisions |
+| I11 | Every provided artifact appears in `epistemic_basis`, even if not in `requires` | Silent artifact dropping |
+| I12 | `matched_rule` in output is the `name` field of the rule that won | Output not traceable to the specific policy rule |
+
+---
+
+## Error taxonomy
+
+### External refusal codes (CLI output)
+
+| Code | Trigger | Exit | Emitting module |
+|------|---------|------|-----------------|
+| `E_BAD_POLICY` | YAML parse failure, missing required fields, rule without `decision_band`, non-PROCEED rule without `risk_code`, default rule not last | 2 | `policy::validate` |
+| `E_AMBIGUOUS_POLICY` | Both `--policy` and `--policy-id` provided | 2 | `cli::args` |
+| `E_UNKNOWN_POLICY` | Policy ID not found in any resolution path | 2 | `policy::loader` |
+| `E_BAD_ARTIFACT` | JSON parse failure, missing `version` field, version field doesn't match `*.v<N>` pattern | 2 | `bundle::artifact` |
+| `E_DUPLICATE_TOOL` | Two or more artifacts derive to the same tool name | 2 | `bundle::mod` |
+| `E_INCOMPLETE_BASIS` | Policy `requires` lists a tool not present in the bundle | 2 | `evaluate::mod` |
+| `E_MISSING_RULE` | No rule matched and no default rule exists | 2 | `evaluate::matcher` |
+
+### Internal error types (Rust)
+
+```rust
+// policy/mod.rs
+enum PolicyError {
+    Io(std::io::Error),           // File read failure
+    YamlParse(serde_yaml::Error), // YAML syntax error
+    SchemaViolation(String),      // Structural validation failure
+    NotFound { id: String },      // Resolution failed
+    AmbiguousSelector,            // --policy + --policy-id
+}
+
+// bundle/mod.rs
+enum BundleError {
+    Io(std::io::Error),
+    JsonParse { path: PathBuf, source: serde_json::Error },
+    NoVersion { path: PathBuf },
+    BadVersion { path: PathBuf, version: String },
+    DuplicateTool { tool: String, paths: [PathBuf; 2] },
+}
+
+// evaluate/mod.rs
+enum EvalError {
+    IncompleteBasis { missing: Vec<String> },
+    NoMatchingRule,
+}
+```
+
+Each internal error maps to exactly one refusal code. `PolicyError::Io` and `PolicyError::YamlParse` both map to `E_BAD_POLICY`.
+
+---
+
+## Contract table
+
+| ID | Scope | Behavioral contract |
+|----|-------|---------------------|
+| C01 | Exit codes | PROCEED → 0, PROCEED_WITH_RISK → 1, ESCALATE → 1, BLOCK → 2, any refusal → 2 |
+| C02 | Refusal envelope | Every refusal produces valid JSON: `{ "version": "assess.v0", "decision_band": null, "refusal": { "code": "E_...", "detail": "...", "next": "..." } }` |
+| C03 | Policy loading | Policies resolve in order: `ASSESS_POLICY_PATH` → builtins → `~/.epistemic/policies/`. First match wins. |
+| C04 | Policy validation | Invalid policies produce `E_BAD_POLICY` with a diagnostic message identifying the specific violation |
+| C05 | Bundle construction | Tool names derived by stripping `.v<N>` suffix from `version` field. Duplicates refused. Every artifact recorded in `epistemic_basis`. |
+| C06 | Rule matching | Rules evaluated in declaration order against the whole bundle. First rule whose `when` clause matches wins. Match surface: `outcome`, `outcome_in`, `refusal`, `signals` (exact equality only). |
+| C07 | Default rule | `default: true` always matches when reached. Must be last rule. If no rule matches and no default exists, refusal `E_MISSING_RULE`. |
+| C08 | Output schema | JSON output conforms to `assess.v0` schema. `matched_rule`, `required_tools`, `observed_tools`, `risk_factors`, `epistemic_basis` all present. |
+| C09 | Witness | Every invocation appends a witness record to `~/.epistemic/witness.jsonl` unless `--no-witness`. Record includes: tool name, input paths, policy ID, decision band, duration. |
+| C10 | Pipeline compat | `assess` output is a valid member artifact for `pack seal`. The `version` field is `assess.v0`. |
+| C11 | Determinism | Identical inputs (same artifact bytes, same policy bytes) produce byte-identical output across runs, platforms, and Rust compiler versions. |
+| C12 | Policy hash | `policy.sha256` = SHA-256 of the policy file's raw bytes, hex-encoded with `sha256:` prefix. |
+
+---
+
+## Threat table
+
+| ID | Threat | Mitigation | Refusal code |
+|----|--------|------------|--------------|
+| T01 | Malformed policy YAML (syntax errors, wrong types, missing fields) | `policy::validate` rejects before evaluation begins | `E_BAD_POLICY` |
+| T02 | Duplicate artifacts for the same tool | `bundle::mod` checks after tool derivation | `E_DUPLICATE_TOOL` |
+| T03 | Incomplete evidence (policy requires tools not in bundle) | `evaluate::mod` checks `requires` before rule matching | `E_INCOMPLETE_BASIS` |
+| T04 | Policy with no default rule and unmatched bundle state | `evaluate::matcher` returns `EvalError::NoMatchingRule` | `E_MISSING_RULE` |
+| T05 | Both `--policy` and `--policy-id` provided | `cli::args` validates mutual exclusivity at parse time | `E_AMBIGUOUS_POLICY` |
+| T06 | Artifact JSON with missing or malformed `version` field | `bundle::artifact` validates version pattern `*.v<N>` | `E_BAD_ARTIFACT` |
+| T07 | Empty artifact list (no positional args) | `clap` enforces `required = true` on positional args | clap error (not a refusal) |
+| T08 | Policy containing `condition` fields from pre-narrowing spec | `policy::validate` rejects unknown fields in `when` clauses | `E_BAD_POLICY` |
+| T09 | Non-deterministic output from HashMap serialization | `#![forbid]` on HashMap in output types; golden rule enforced | Build-time / test-time |
+| T10 | Artifact with `outcome: null` but no `refusal` block | Valid state (tool ran but produced no outcome and no refusal). Recorded in `epistemic_basis` but may not match any rule. | Falls through to default or `E_MISSING_RULE` |
+
+---
+
+## Staged implementation sequence
+
+### D1 — CLI scaffold + exit codes + refusal skeleton
+
+**Build:** `cli/args.rs`, `cli/exit.rs`, `cli/mod.rs`, `refusal/codes.rs`, `refusal/payload.rs`, `refusal/mod.rs`, `main.rs`, `lib.rs`
+
+**Satisfies:** C01, C02
+
+**Gate:** `assess --help` prints usage. `assess` with no args exits 2 with valid refusal JSON. All 7 refusal codes are defined as enum variants.
+
+### D2 — Policy loader + validation
+
+**Build:** `policy/schema.rs`, `policy/loader.rs`, `policy/validate.rs`, `policy/mod.rs`
+
+**Satisfies:** C03, C04, C12, I07, I08
+
+**Gate:** Valid YAML loads into typed `PolicyFile`. Invalid YAML produces `E_BAD_POLICY` with diagnostic. Policy SHA-256 computed and matches raw file hash. Rules without `risk_code` on non-PROCEED bands are rejected. Default rule not-last is rejected.
+
+**Depends on:** D1
+
+### D3 — Bundle construction + tool derivation
+
+**Build:** `bundle/artifact.rs`, `bundle/derive.rs`, `bundle/mod.rs`
+
+**Satisfies:** C05, I03, I04, I11
+
+**Gate:** JSON artifacts parse into typed structs. Tool name derived from `version` field. Duplicate tool names produce `E_DUPLICATE_TOOL`. Missing version field produces `E_BAD_ARTIFACT`. All artifacts recorded.
+
+**Depends on:** D1
+
+### D4 — Rule matcher + evaluation orchestrator
+
+**Build:** `evaluate/matcher.rs`, `evaluate/mod.rs`
+
+**Satisfies:** C06, C07, C11, I01, I02, I05, I06, I12
+
+**Gate:** Bundle matched against rules in order. First matching `when` clause wins. Default rule catches unmatched states. No rule match + no default = `E_MISSING_RULE`. `requires` checked before matching = `E_INCOMPLETE_BASIS`. Output `matched_rule` equals winning rule's `name`. Same inputs produce same output.
+
+**Depends on:** D2, D3
+
+### D5 — Output formatting (JSON + human)
+
+**Build:** `output/json.rs`, `output/human.rs`, `output/mod.rs`
+
+**Satisfies:** C08, C10
+
+**Gate:** JSON output validates against `assess.v0` schema (test with `jsonschema` crate). Human output shows decision band, risk factors, basis summary. `pack` fixture `artifact_assess.json` updated to match schema.
+
+**Depends on:** D4
+
+### D6 — Witness integration
+
+**Build:** `witness/record.rs`, `witness/ledger.rs`, `witness/query.rs`, `witness/mod.rs`
+
+**Satisfies:** C09, I10
+
+**Gate:** Witness JSONL appended after every run. `--no-witness` suppresses. `assess witness last` returns the most recent record. `assess witness count` returns total.
+
+**Depends on:** D5
+
+### D7 — operator.json + spine-rules + golden rules
+
+**Build:** `operator.json`, `rules/exit-code-range.yml`, `rules/no-hashmap-in-output.yml`, `rules/witness-must-append.yml`, `tests/golden_rules.rs`
+
+**Satisfies:** C10 (full), non-negotiable #3
+
+**Gate:** `golden_rules.rs` passes. `operator.json` describes the binary, exit codes, refusals, pipeline position (upstream: shape, rvl, verify, benchmark; downstream: pack).
+
+**Depends on:** D6
+
+### D8 — Integration tests + E2E pipeline
+
+**Build:** All test files in `tests/`, all fixtures in `fixtures/`
+
+**Satisfies:** All contracts, all threats, all invariants
+
+**Gate:** Every refusal code exercised. Every decision band exercised. Determinism test passes. Golden output fixtures match byte-for-byte.
+
+**Depends on:** D7
+
+---
+
+## Test matrix
+
+### Unit tests
+
+| Test ID | Contract | Threat | Invariant | Type | Expected result |
+|---------|----------|--------|-----------|------|-----------------|
+| U01 | C03 | — | — | unit | Valid policy YAML loads into PolicyFile struct |
+| U02 | C04 | T01 | — | unit | Missing `schema_version` → `E_BAD_POLICY` |
+| U03 | C04 | T01 | — | unit | Empty `rules` list → `E_BAD_POLICY` |
+| U04 | C04 | T08 | — | unit | Rule with `condition` field → `E_BAD_POLICY` |
+| U05 | C04 | T01 | I06 | unit | Default rule not last → `E_BAD_POLICY` |
+| U06 | C04 | — | I08 | unit | Non-PROCEED rule without `risk_code` → `E_BAD_POLICY` |
+| U07 | C05 | — | — | unit | Version `shape.v0` derives tool name `shape` |
+| U08 | C05 | T06 | — | unit | Artifact with no `version` → `E_BAD_ARTIFACT` |
+| U09 | C05 | T06 | — | unit | Version `bad_format` (no `.v<N>`) → `E_BAD_ARTIFACT` |
+| U10 | C05 | T02 | I04 | unit | Two shape artifacts → `E_DUPLICATE_TOOL` |
+| U11 | — | — | I03 | unit | Policy requires `verify`, bundle has only shape + rvl → `E_INCOMPLETE_BASIS` |
+| U12 | C06 | — | I05 | unit | Clean bundle matches `clean_reconciliation` (first rule) → PROCEED |
+| U13 | C06 | — | I02 | unit | Partial overlap bundle → PROCEED_WITH_RISK, `risk_code: PARTIAL_SCHEMA_OVERLAP` |
+| U14 | C06 | — | — | unit | `outcome_in` matches any value in the list |
+| U15 | C06 | — | — | unit | `refusal` matches on `refusal.code` field |
+| U16 | C06 | — | — | unit | `signals` exact-equality match (key + value must both match) |
+| U17 | C06 | — | — | unit | `when` clause with tool not in bundle: clause does not match |
+| U18 | C07 | T04 | — | unit | No rule matches, no default → `E_MISSING_RULE` |
+| U19 | C07 | — | I06 | unit | Default rule catches unmatched state → BLOCK |
+| U20 | C12 | — | I07 | unit | Policy SHA-256 in output matches file hash |
+| U21 | — | — | I12 | unit | Output `matched_rule` equals winning rule's `name` field |
+| U22 | — | — | I11 | unit | Extra artifact (not in `requires`) appears in `epistemic_basis` |
+| U23 | — | T10 | — | unit | Artifact with `outcome: null` and no refusal: recorded, may not match any rule |
+
+### Integration tests
+
+| Test ID | Contract | Threat | Invariant | Type | Expected result |
+|---------|----------|--------|-----------|------|-----------------|
+| E01 | C01, C08 | — | I09 | integration | shape(COMPATIBLE) + rvl(REAL_CHANGE) + verify(PASS) → PROCEED, exit 0 |
+| E02 | C01, C08 | — | I09 | integration | rvl(E_DIFFUSE) → ESCALATE, exit 1 |
+| E03 | C01, C08 | — | I09 | integration | Default rule fires → BLOCK, exit 2 |
+| E04 | C02 | — | I09 | integration | `E_BAD_POLICY` → valid refusal JSON, exit 2 |
+| E05 | C02 | T05 | — | integration | `--policy X --policy-id Y` → `E_AMBIGUOUS_POLICY`, exit 2 |
+| E06 | C10 | — | — | integration | Output validates against pack's `artifact_assess.json` schema |
+| E07 | C09 | — | I10 | integration | Witness record appended after successful run |
+| E08 | C09 | — | I10 | integration | `--no-witness` suppresses witness append |
+| E09 | C11 | T09 | I01 | integration | Run 10x with same inputs → all outputs byte-identical |
+| E10 | C08 | — | — | integration | `--json` produces valid JSON; no `--json` produces human summary |
+| E11 | C03 | — | — | integration | Policy resolved from `ASSESS_POLICY_PATH` env var |
+| E12 | — | T08 | — | integration | Policy with `condition: "x >= 0.5"` → `E_BAD_POLICY` |
+
+---
+
+## Quality gates
+
+| Gate | Condition | Test strategy |
+|------|-----------|---------------|
+| **Gate 1: Determinism** | 10 consecutive runs on identical inputs produce byte-identical output | `tests/determinism.rs`: hash output of 10 runs, assert all hashes equal |
+| **Gate 2: Refusal completeness** | Every refusal code in the `RefusalCode` enum is exercised by at least one test | `tests/refusal_suite.rs`: one test per variant, `strum::EnumIter` asserts coverage |
+| **Gate 3: Schema conformance** | `assess` JSON output validates against `assess.v0` JSON Schema | `tests/output_schema.rs`: `jsonschema` crate validates all golden outputs |
+| **Gate 4: Pipeline integration** | `assess` output accepted by `pack seal` as valid member artifact | `tests/e2e_pipeline.rs`: `pack::detect::member_type` identifies output as `assess` artifact |
+| **Gate 5: Golden output stability** | Golden fixture files in `fixtures/golden/` match actual output byte-for-byte | `tests/evaluate_rules.rs`: assert_eq on serialized output vs golden file |
+
+---
+
+## Execution commands
+
+```bash
+# Build
+cargo check -p assess --all-targets
+cargo build -p assess
+
+# Lint + format
+cargo clippy -p assess --all-targets -- -D warnings
+cargo fmt -p assess -- --check
+
+# Test (all)
+cargo test -p assess
+
+# Test (targeted)
+cargo test -p assess -- golden_rules
+cargo test -p assess -- policy_load
+cargo test -p assess -- evaluate_rules
+cargo test -p assess -- refusal_suite
+cargo test -p assess -- determinism
+cargo test -p assess -- e2e_pipeline
+
+# Verify gates
+cargo test -p assess -- determinism --nocapture
+cargo test -p assess -- refusal_suite --nocapture
+cargo test -p assess -- output_schema --nocapture
+
+# Pre-commit (UBS equivalent)
+cargo check -p assess --all-targets && \
+cargo clippy -p assess --all-targets -- -D warnings && \
+cargo test -p assess && \
+cargo fmt -p assess -- --check
+```
+
+---
+
+## Candidate crates
 
 | Need | Crate | Notes |
 |------|-------|-------|
-| Expression evaluation (v0) | `evalexpr` | Simple condition expressions (`>= 0.45`, `and`/`or`) |
-| Expression evaluation (v1) | `cel-interpreter` | Google CEL — native dot-path access, `has()`, guaranteed termination |
+| CLI | `clap` (derive) | Consistent with all spine tools |
 | YAML parsing | `serde_yaml` | Policy file loading |
-| JSON Schema validation | `jsonschema` | Meta-validation of policy files |
 | JSON parsing | `serde_json` | Artifact loading |
+| JSON Schema validation | `jsonschema` | Dev-dep: meta-validation of policy files and output |
+| Hashing (policy content) | `sha2` | SHA-256 for policy content hash |
+| Hashing (witness) | `blake3` | Consistent with spine witness convention |
+| Timestamps | `chrono` | Witness records (ISO 8601) |
+| Enum utilities | `strum` | Dev-dep: `EnumIter` for refusal coverage tests |
+| Temp files | `tempfile` | Dev-dep: test isolation |
+| Golden rules | `spine-rules` (git) | Dev-dep: golden rule enforcement |
 
-### Expression evaluation path
-
-v0: `evalexpr` handles simple comparisons. Requires flattening JSON to a variable context (~50 LOC wrapper).
-
-v1: `cel-interpreter` (Google's Common Expression Language) is the better semantic fit — natively supports dot-path access on maps, `has()` for optional fields, guaranteed termination, no side effects. CEL expressions look like: `checks.schema_overlap.overlap_ratio >= 0.45`. Migration path is clean: simple comparisons are valid in both.
+v0 does not need expression evaluation crates. Match surface is exact equality only.
 
 ---
 
 ## Determinism
 
-Same artifacts + same policy = same decision. No randomness, no side effects. The policy file is content-hashed and included in the output.
+Same artifacts + same policy = same decision. No randomness, no side effects. The policy file is content-hashed and included in the output. No `HashMap` in any output struct. No timestamps in the decision output (timestamps live in witness records only).
