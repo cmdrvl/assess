@@ -1,6 +1,6 @@
 # assess
 
-**Deterministic decision classification over a complete spine evidence bundle.**
+**Deterministic decision classification over a spine evidence bundle.**
 
 `assess` is the epistemic spine tool that turns a complete set of upstream evidence artifacts into one declared decision:
 
@@ -13,36 +13,64 @@ It answers one narrow question:
 
 **Given this policy and this evidence bundle, what action band should we assign?**
 
-Current status:
+---
 
-- repository status: scaffolded Rust crate with module skeleton, fixture corpus, schema artifacts, and named test layout
-- source of truth: [docs/PLAN_ASSESS.md](./docs/PLAN_ASSESS.md)
-- current implementation state: metadata surfaces are live (`--describe`, `--schema`, `--version`), but full policy evaluation and witness execution are not implemented yet
+## Quickstart
 
-This repo is now ready for the main implementation swarm. The plan and Beads graph are already in place; the crate tree is no longer docs-only.
+Build from source:
+
+```bash
+cargo build --release
+./target/release/assess --help
+```
+
+Run a decision against a policy:
+
+```bash
+./target/release/assess \
+  fixtures/artifacts/shape_compatible.json \
+  fixtures/artifacts/rvl_real_change.json \
+  fixtures/artifacts/verify_pass.json \
+  --policy fixtures/policies/loan_tape_monthly_v1.yaml \
+  --json
+```
+
+Use a policy ID to resolve from the search path:
+
+```bash
+./target/release/assess \
+  fixtures/artifacts/shape_compatible.json \
+  fixtures/artifacts/rvl_real_change.json \
+  fixtures/artifacts/verify_pass.json \
+  --policy-id loan_tape.monthly.v1 \
+  --json
+```
+
+Inspect metadata:
+
+```bash
+./target/release/assess --describe
+./target/release/assess --schema
+./target/release/assess --version
+```
+
+Query the local witness log:
+
+```bash
+./target/release/assess witness last --json
+./target/release/assess witness query --json
+./target/release/assess witness count --json
+```
 
 ---
 
-## Current quickstart
+## Exit Codes
 
-Contributor and local-operator quickstart:
-
-```bash
-cd assess
-sed -n '1,260p' docs/PLAN_ASSESS.md
-br ready
-cargo run -- --help
-cargo run -- --describe
-cargo run -- --schema
-cargo run -- --version
-cargo test
-```
-
-At the moment:
-
-- `--describe`, `--schema`, and `--version` are implemented
-- the full `assess <ARTIFACT>... --policy ...` command path is scaffolded but not semantically complete yet
-- witness subcommands are scaffolded in the CLI tree but not fully implemented yet
+| Exit | Meaning |
+|------|---------|
+| `0` | `PROCEED` |
+| `1` | `PROCEED_WITH_RISK` or `ESCALATE` |
+| `2` | `BLOCK`, refusal, or CLI error |
 
 ---
 
@@ -70,11 +98,11 @@ But after those reports exist, something still has to decide what to do next.
 
 ## What assess owns
 
-- policy loading and validation
-- complete-bundle basis checks
-- deterministic ordered rule matching
+- policy loading, validation, and content-addressed hashing
+- complete-bundle epistemic-basis checks
+- deterministic ordered rule matching (first match wins)
 - one decision artifact per invocation
-- refusal envelopes for unsafe or incomplete assessment attempts
+- structured refusal envelopes for unsafe or incomplete assessment attempts
 - local witness receipt logging
 
 ## What assess does not own
@@ -119,101 +147,84 @@ Use `assess` when the question is:
 
 ---
 
-## Current repository shape
+## Policies
 
-The scaffold now matches the plan’s module layout:
+Policies are YAML files conforming to the `policy.v0` schema (`schemas/policy.v0.schema.json`).
 
-- [Cargo.toml](./Cargo.toml)
-- [src/lib.rs](./src/lib.rs)
-- [src/main.rs](./src/main.rs)
-- [src/cli/](./src/cli)
-- [src/policy/](./src/policy)
-- [src/bundle/](./src/bundle)
-- [src/evaluate/](./src/evaluate)
-- [src/output/](./src/output)
-- [src/refusal/](./src/refusal)
-- [src/witness/](./src/witness)
-- [schemas/](./schemas)
-- [rules/](./rules)
-- [fixtures/](./fixtures)
-- [tests/](./tests)
+A policy declares:
 
-The current scaffold rule is important:
+- `requires`: which upstream tools must be present in the evidence bundle
+- `rules`: an ordered list of condition/action pairs (first match wins)
+- `default`: exactly one rule must be marked as the default fallback
 
-- `src/main.rs` stays thin
-- `src/lib.rs` owns the module tree and top-level execution surface
-- placeholder behavior should stay explicit rather than pretending evaluation is already implemented
+v0 uses exact-equality matching only. No CEL, no expression engine, no numeric-threshold DSL.
+
+Policy resolution:
+
+1. `--policy <path>` loads a policy from a file path
+2. `--policy-id <id>` searches `ASSESS_POLICY_PATH` directories and `rules/` for a matching `policy_id`
 
 ---
 
-## Current v0 contract direction
+## Refusal Codes
 
-Target CLI surface:
+When assess cannot produce a valid decision, it emits a structured refusal envelope:
 
-```text
-assess <ARTIFACT>... --policy <POLICY> [OPTIONS]
-assess witness <query|last|count> [OPTIONS]
-```
-
-Target domain outcomes:
-
-| Exit | Meaning |
+| Code | Meaning |
 |------|---------|
-| `0` | `PROCEED` |
-| `1` | `PROCEED_WITH_RISK` or `ESCALATE` |
-| `2` | `BLOCK` or refusal |
-
-Important boundary:
-
-- v0 uses exact-equality policy matching only
-- no CEL, no expression engine, no numeric-threshold DSL
-- same artifacts plus same policy must produce the same decision bytes
-
-Read [docs/PLAN_ASSESS.md](./docs/PLAN_ASSESS.md) for the full contract.
+| `E_BAD_POLICY` | Policy file is malformed YAML or fails schema validation |
+| `E_AMBIGUOUS_POLICY` | Both `--policy` and `--policy-id` were specified |
+| `E_UNKNOWN_POLICY` | Policy ID could not be resolved from search paths |
+| `E_BAD_ARTIFACT` | An artifact file could not be read or parsed as JSON |
+| `E_DUPLICATE_TOOL` | Multiple artifacts claim the same upstream tool |
+| `E_INCOMPLETE_BASIS` | Required tools are missing from the evidence bundle |
+| `E_MISSING_RULE` | No rule matched the evidence (should not happen with a default rule) |
 
 ---
 
-## Current execution graph
+## Repository Structure
 
-The implementation graph already exists in Beads:
+| Path | Purpose |
+|------|---------|
+| `src/main.rs` | Thin binary entrypoint |
+| `src/lib.rs` | Module tree and top-level execution surface |
+| `src/cli/` | CLI argument parsing, routing, exit-code model |
+| `src/policy/` | Policy loading, validation, schema types |
+| `src/bundle/` | Artifact loading, basis derivation |
+| `src/evaluate/` | Rule matching and decision orchestration |
+| `src/output/` | Deterministic JSON and human rendering |
+| `src/refusal/` | Refusal codes and envelope model |
+| `src/witness/` | Local witness ledger, record schema, query surface |
+| `schemas/` | Embedded JSON schemas (`assess.v0`, `policy.v0`) |
+| `rules/` | Golden-rule enforcement artifacts |
+| `fixtures/` | Policy, artifact, and golden-output fixtures |
+| `tests/` | 14 named test suites, 147+ tests |
 
-- [.beads/issues.jsonl](./.beads/issues.jsonl)
+---
 
-Typical workflow:
+## Quality Gates
 
 ```bash
-br ready
-br show <id>
-br update <id> --status=in_progress
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+./scripts/ubs_gate.sh
 ```
 
-The scaffold bead is already closed. The current open lanes are the real implementation work: refusal contract, shared schema/bundle types, fixture seeding, CI/release setup, and shared test support.
+---
+
+## Core Invariants
+
+1. **Determinism is constitutional.** Same artifacts + same policy = same decision bytes. No timestamps, no random ordering, no ambient state in decision output.
+2. **No expression engine in v0.** Policy matching is exact equality only.
+3. **Every input is accounted for.** Every artifact appears in `epistemic_basis`.
+4. **Ordered rule matching only.** Rules evaluated in declaration order. First match wins. Default rule must be last.
+5. **assess is not a scorer.** It classifies evidence into action bands. Scoring belongs in `benchmark`.
+6. **Witness is local only.** Witness records are local receipt logs, not portable evidence.
+7. **Refusals are protocol surface.** Structured envelopes, not ad hoc text.
 
 ---
 
-## What not to do
+## Release
 
-Do not turn `assess` into:
-
-- a general JSON rules engine
-- a numeric scoring engine
-- a diff tool
-- a benchmark replacement
-- a verify replacement
-- a factory resolver
-
-If the desired behavior starts sounding like “score,” “compare,” or “validate,” it probably belongs in another tool.
-
----
-
-## Release status
-
-`assess` is not release-ready yet.
-
-The repo now has the crate scaffold and implementation graph, but it still needs:
-
-- real policy/bundle/evaluator implementation
-- repo-local CI and release workflows
-- final README/AGENTS reconciliation after the implementation settles
-
-So treat the current repo as implementation-ready, not release-ready.
+Releases are cut automatically via `.github/workflows/release.yml` when `Cargo.toml` version changes on `main`. The workflow builds cross-platform binaries (5 targets), generates SHA256SUMS with cosign signing, SBOM, and SLSA provenance, and publishes to GitHub Releases and the Homebrew tap.

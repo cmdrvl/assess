@@ -1,2 +1,13 @@
-rule_id: assess.no-hashmap-in-output
-description: Output rendering must stay deterministic and avoid HashMap-driven key order.
+id: no-hashmap-in-output
+language: rust
+message: |
+  R-005: HashMap has non-deterministic iteration order.
+  Use BTreeMap in output-path code to guarantee byte-identical JSON output.
+  FIX: Replace `HashMap` with `BTreeMap` from `std::collections`.
+severity: warning
+note: "Golden Rule R-005 (Determinism)"
+rule:
+  pattern: HashMap::new()
+  not:
+    inside:
+      kind: attribute_item

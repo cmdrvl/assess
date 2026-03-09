@@ -20,12 +20,12 @@ shape / rvl / verify / benchmark -> assess -> pack
 
 What `assess` owns:
 
-- policy loading and validation
+- policy loading, validation, and content-addressed hashing
 - epistemic-basis completeness checks
-- ordered rule matching
-- deterministic decision output
-- refusal envelopes for unsafe or incomplete invocations
-- local witness receipt logging
+- ordered rule matching (first match wins, exact equality only)
+- deterministic decision output (JSON and human modes)
+- structured refusal envelopes for unsafe or incomplete invocations
+- local witness receipt logging and query surface
 
 What `assess` does not own:
 
@@ -42,33 +42,22 @@ If the work sounds like scoring, validation, or comparison, it probably belongs 
 
 ## Current Repository State
 
-This repo now contains the scaffolded Rust crate plus the implementation Beads graph.
+This repo contains a fully implemented v0 decision primitive.
 
-Current contents:
-
-- [docs/PLAN_ASSESS.md](./docs/PLAN_ASSESS.md) — implementation-grade spec
-- [.beads/issues.jsonl](./.beads/issues.jsonl) — execution graph
-- [README.md](./README.md) — operator-facing framing
-- scaffolded crate tree with module boundaries, schemas, rules, fixtures, and named test layout
-
-Important reality check:
-
-- full assessment semantics are not implemented yet
-- metadata surfaces are implemented (`--describe`, `--schema`, `--version`)
-- decision execution and witness execution are still active implementation work
-
-Implication:
-
-- keep the implementation aligned to the plan
-- do not smuggle in “reasonable” semantics that the plan does not declare
-- do not collapse module boundaries into `main.rs`
+- **147+ tests** across 14 named suites
+- **All 4 decision bands live**: PROCEED (exit 0), PROCEED_WITH_RISK (exit 1), ESCALATE (exit 1), BLOCK (exit 2)
+- **7 refusal codes**: E_BAD_POLICY, E_AMBIGUOUS_POLICY, E_UNKNOWN_POLICY, E_BAD_ARTIFACT, E_DUPLICATE_TOOL, E_INCOMPLETE_BASIS, E_MISSING_RULE
+- **Full pipeline**: policy loading → bundle construction → rule evaluation → deterministic output → witness append
+- **Quality gates green**: fmt, clippy, test, UBS
+- **CI and release workflows**: `.github/workflows/ci.yml`, `.github/workflows/release.yml`
+- **Determinism proven**: byte-exact determinism across all 4 bands and refusals
 
 ---
 
 ## Quick Reference
 
 ```bash
-# Read the spec first
+# Read the spec
 sed -n '1,260p' docs/PLAN_ASSESS.md
 
 # Beads / graph
@@ -76,28 +65,25 @@ br ready
 br blocked
 br show <id>
 
-# Graph-aware prioritization
-bv --robot-next
-bv --robot-triage
-bv --robot-plan
-
-# Current crate verification
+# Quality gates
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-ubs .
+./scripts/ubs_gate.sh
 
-# Metadata surfaces already live
+# Run assess
+cargo run -- --help
 cargo run -- --describe
 cargo run -- --schema
 cargo run -- --version
-```
 
-Docs-only changes:
-
-```bash
-git diff --check
-ubs --diff
+# Full decision pipeline
+cargo run -- \
+  fixtures/artifacts/shape_compatible.json \
+  fixtures/artifacts/rvl_real_change.json \
+  fixtures/artifacts/verify_pass.json \
+  --policy fixtures/policies/loan_tape_monthly_v1.yaml \
+  --json
 ```
 
 ---
@@ -113,34 +99,40 @@ Do not revive stale `compare` ideas or ad hoc policy logic. `assess` is a narrow
 
 ---
 
-## Current File Map
+## File Map
 
 | Path | Purpose |
 |------|---------|
-| `Cargo.toml` | crate root |
-| `src/main.rs` | thin binary entrypoint only |
-| `src/lib.rs` | module tree and top-level execution surface |
-| `src/cli/args.rs` | clap structs and command wiring |
-| `src/cli/exit.rs` | exit-code model |
-| `src/policy/schema.rs` | policy data model |
-| `src/policy/loader.rs` | policy resolution order |
-| `src/policy/validate.rs` | policy validation helpers |
-| `src/bundle/artifact.rs` | artifact basis model |
-| `src/bundle/derive.rs` | canonical tool derivation |
-| `src/evaluate/matcher.rs` | rule matching surface |
-| `src/evaluate/mod.rs` | decision model/orchestrator surface |
-| `src/output/json.rs` | JSON rendering surface |
-| `src/output/human.rs` | human rendering surface |
-| `src/refusal/codes.rs` | refusal code set |
-| `src/refusal/payload.rs` | refusal envelope model |
-| `src/witness/record.rs` | witness record schema |
-| `src/witness/ledger.rs` | witness append surface |
-| `src/witness/query.rs` | witness query modes |
-| `schemas/*.json` | schema contracts |
-| `rules/*.yml` | golden-rule enforcement artifacts |
-| `fixtures/**` | shared policy/artifact/golden fixtures |
-| `tests/support/**` | shared test helpers only |
-| `tests/*.rs` | named suites matching the plan |
+| `Cargo.toml` | Crate root (single crate, not a workspace) |
+| `src/main.rs` | Thin binary entrypoint only |
+| `src/lib.rs` | Module tree and top-level execution surface |
+| `src/cli/args.rs` | Clap structs and command wiring |
+| `src/cli/exit.rs` | Exit-code model (0/1/2 trinity) |
+| `src/cli/mod.rs` | Route dispatch |
+| `src/policy/schema.rs` | Policy data model (PolicyFile, Rule, WhenClause, ToolMatcher) |
+| `src/policy/loader.rs` | Policy resolution: file path and ID-based search |
+| `src/policy/validate.rs` | Policy structural validation |
+| `src/policy/mod.rs` | PolicyError and LoadedPolicy types |
+| `src/bundle/artifact.rs` | Artifact basis model and ArtifactBasisEntry |
+| `src/bundle/derive.rs` | Canonical tool derivation from artifact JSON |
+| `src/bundle/mod.rs` | ArtifactBundle construction and BundleError |
+| `src/evaluate/matcher.rs` | Rule matching: WhenClause against ArtifactBundle |
+| `src/evaluate/mod.rs` | Decision orchestration, requires check, EvalError |
+| `src/output/mod.rs` | AssessOutput, AssessResult, build_output, render dispatch |
+| `src/output/json.rs` | Deterministic JSON rendering |
+| `src/output/human.rs` | Human-readable rendering |
+| `src/refusal/codes.rs` | RefusalCode enum (7 codes) |
+| `src/refusal/payload.rs` | RefusalEnvelope model |
+| `src/witness/record.rs` | WitnessRecord with builder pattern |
+| `src/witness/ledger.rs` | Append-only JSONL ledger at ~/.epistemic/witness.jsonl |
+| `src/witness/query.rs` | Witness query/last/count modes |
+| `schemas/*.json` | Embedded JSON schemas (assess.v0, policy.v0) |
+| `rules/*.yml` | Golden-rule enforcement artifacts (ast-grep) |
+| `fixtures/policies/` | Policy YAML fixtures |
+| `fixtures/artifacts/` | Artifact JSON fixtures (shape, rvl, verify) |
+| `fixtures/golden/` | Golden JSON outputs for all 4 decision bands |
+| `tests/support/` | Shared test helpers (TempWorkspace, fixture paths, assertions) |
+| `tests/*.rs` | 14 named suites |
 
 Critical structural rules:
 
@@ -149,8 +141,6 @@ Critical structural rules:
 - real decision semantics belong in `src/evaluate/**`
 - refusal shape belongs in `src/refusal/**`
 - witness stays local receipt logging only
-
-Do not move the whole product into one file just because the repo is still young.
 
 ---
 
@@ -209,19 +199,19 @@ The refusal contract is part of the tool.
 
 ## Toolchain
 
-- language: Rust
-- package manager: Cargo only
-- edition: 2024
-- unsafe code: forbidden
+- Language: Rust
+- Package manager: Cargo only
+- Edition: 2024
+- Unsafe code: forbidden (`#![forbid(unsafe_code)]`)
 
-Current dependencies are intentionally small:
+Dependencies:
 
-- `clap`
-- `serde`
-- `serde_json`
-- `thiserror`
-
-Do not add heavy dependency layers casually during early implementation.
+- `clap` — CLI framework
+- `serde`, `serde_json` — serialization
+- `serde_yaml` — policy file parsing
+- `sha2` — policy content-addressed hashing
+- `thiserror` — error types
+- `jsonschema` (dev) — schema validation in tests
 
 ---
 
@@ -233,43 +223,40 @@ Run after substantive code changes:
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-ubs .
+./scripts/ubs_gate.sh
 ```
 
-Current named suite surface:
+Named test suites (14 suites, 147+ tests):
 
-- `tests/golden_rules.rs`
-- `tests/policy_load.rs`
-- `tests/bundle_construct.rs`
-- `tests/evaluate_rules.rs`
-- `tests/refusal_suite.rs`
-- `tests/output_schema.rs`
-- `tests/witness_suite.rs`
-- `tests/e2e_pipeline.rs`
-- `tests/determinism.rs`
-
-The scaffold tests are intentionally lightweight today. They should become real behavioral gates as the implementation lands.
+| Suite | Purpose |
+|-------|---------|
+| `golden_rules` | Operator manifest contract, ast-grep rule compliance |
+| `policy_load` | Policy loading and validation |
+| `policy_loader` | Policy ID resolution and search path |
+| `bundle_construct` | Artifact bundle construction and basis derivation |
+| `evaluate_rules` | Rule matching against bundles |
+| `refusal_suite` | Refusal envelope completeness |
+| `output_schema` | JSON schema validation, golden file comparison, human output |
+| `witness_suite` | Witness record, ledger, and query surface |
+| `e2e_pipeline` | Full pipeline integration (all bands + refusals) |
+| `determinism` | Byte-exact determinism proof across all bands and refusals |
+| `cli_shell` | CLI argument parsing and routing |
+| `pack_compat` | Pack-compatible artifact detection |
+| `support` | Test harness self-tests |
 
 ---
 
 ## Beads Workflow
 
-The implementation graph is already present. Use it.
-
-Typical loop:
+Use the Beads issue tracker for task management:
 
 ```bash
-br ready
-br show <id>
+br ready           # find unblocked work
+br show <id>       # inspect a bead
 br update <id> --status=in_progress
+br close <id>      # mark complete
+br sync --flush-only
 ```
-
-Current post-scaffold graph shape:
-
-- early contract lanes: refusal contract, schema/bundle types
-- shared resource lanes: fixture corpus, test-support harness
-- infrastructure lane: CI / release prerequisites
-- later semantic lanes: policy loader, bundle parsing, evaluator, rendering, integration
 
 Do not claim the epic. Claim real child beads only.
 
@@ -305,21 +292,3 @@ If direct MCP Agent Mail tools are unavailable:
 - If a message has `ack_required=true`, acknowledge it promptly.
 - Keep bead updates short and explicit: start message, finish message, blocker message.
 - Reuse a stable bead thread when possible for searchable history.
-
----
-
-## Current Implementation Guidance
-
-Right now the important thing is to preserve the scaffold’s honesty:
-
-- metadata surfaces can be real
-- placeholder semantics must be explicit
-- do not fake successful assess decisions before policy/evaluator lanes are built
-
-The current scaffold already gives you these safe boundaries:
-
-- metadata paths are live
-- evaluation paths can still refuse cleanly
-- tests already prove the tree compiles and the embedded artifacts exist
-
-Build on that. Do not paper over missing semantics with fake outputs.

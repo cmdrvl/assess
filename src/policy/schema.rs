@@ -5,6 +5,7 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PolicyFile {
+    pub schema_version: u32,
     pub policy_id: String,
     pub policy_version: u32,
     #[serde(default)]
@@ -24,14 +25,18 @@ pub struct Rule {
     pub then: ThenClause,
 }
 
+/// A when clause maps tool names to their match conditions.
+pub type WhenClause = BTreeMap<String, ToolMatcher>;
+
+/// Match conditions for a single tool within a when clause.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WhenClause {
-    #[serde(default)]
-    pub tool: Option<String>,
+pub struct ToolMatcher {
     #[serde(default)]
     pub outcome: Option<String>,
     #[serde(default)]
-    pub refusal_code: Option<String>,
+    pub outcome_in: Option<Vec<String>>,
+    #[serde(default)]
+    pub refusal: Option<String>,
     #[serde(default)]
     pub signals: BTreeMap<String, Value>,
 }

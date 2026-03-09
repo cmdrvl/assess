@@ -2,8 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "policy.v0",
   "type": "object",
-  "required": ["policy_id", "policy_version", "rules"],
+  "required": ["schema_version", "policy_id", "policy_version", "rules"],
   "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
     "policy_id": { "type": "string" },
     "policy_version": { "type": "integer", "minimum": 1 },
     "description": { "type": "string" },
@@ -13,13 +14,29 @@
     },
     "rules": {
       "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
         "required": ["name", "then"],
         "properties": {
           "name": { "type": "string" },
           "default": { "type": "boolean" },
-          "when": { "type": "object" },
+          "when": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "outcome": { "type": "string" },
+                "outcome_in": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "refusal": { "type": "string" },
+                "signals": { "type": "object" }
+              },
+              "additionalProperties": false
+            }
+          },
           "then": {
             "type": "object",
             "required": ["decision_band"],
@@ -30,10 +47,10 @@
               },
               "risk_code": { "type": "string" }
             },
-            "additionalProperties": true
+            "additionalProperties": false
           }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       }
     }
   },

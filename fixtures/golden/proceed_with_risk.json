@@ -2,5 +2,53 @@
   "tool": "assess",
   "version": "assess.v0",
   "decision_band": "PROCEED_WITH_RISK",
-  "risk_code": "PARTIAL_SCHEMA_OVERLAP"
+  "policy": {
+    "id": "loan_tape.monthly.v1",
+    "version": 1,
+    "sha256": "sha256:6ec0f78c509cc6b609ac1a35a18f7732c8f503aef6915a22b760b9b715a89e63"
+  },
+  "matched_rule": "partial_overlap_acceptable",
+  "required_tools": [
+    "shape",
+    "rvl",
+    "verify"
+  ],
+  "observed_tools": [
+    "shape",
+    "rvl",
+    "verify"
+  ],
+  "risk_factors": [
+    {
+      "code": "PARTIAL_SCHEMA_OVERLAP"
+    }
+  ],
+  "epistemic_basis": [
+    {
+      "artifact": "fixtures/artifacts/shape_incompatible_partial.json",
+      "tool": "shape",
+      "version": "shape.v0",
+      "outcome": "INCOMPATIBLE",
+      "policy_signals": {
+        "compatibility_band": "PARTIAL"
+      }
+    },
+    {
+      "artifact": "fixtures/artifacts/rvl_no_real_change.json",
+      "tool": "rvl",
+      "version": "rvl.v0",
+      "outcome": "NO_REAL_CHANGE",
+      "policy_signals": {}
+    },
+    {
+      "artifact": "fixtures/artifacts/verify_pass.json",
+      "tool": "verify",
+      "version": "verify.report.v1",
+      "outcome": "PASS",
+      "policy_signals": {
+        "severity_band": "CLEAN"
+      }
+    }
+  ],
+  "refusal": null
 }

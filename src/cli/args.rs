@@ -7,31 +7,41 @@ use clap::{Args, Parser, Subcommand};
     name = "assess",
     about = "Deterministic decision classification over a complete spine evidence bundle",
     disable_version_flag = true,
-    subcommand_precedence_over_arg = true
+    subcommand_precedence_over_arg = true,
+    subcommand_negates_reqs = true
 )]
 pub struct Cli {
-    #[arg(value_name = "ARTIFACT")]
+    #[arg(
+        value_name = "ARTIFACT",
+        required_unless_present_any = ["describe", "schema", "version"]
+    )]
     pub artifacts: Vec<PathBuf>,
 
-    #[arg(long)]
+    #[arg(
+        long,
+        required_unless_present_any = ["policy_id", "describe", "schema", "version"]
+    )]
     pub policy: Option<String>,
 
-    #[arg(long = "policy-id")]
+    #[arg(
+        long = "policy-id",
+        required_unless_present_any = ["policy", "describe", "schema", "version"]
+    )]
     pub policy_id: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub json: bool,
 
     #[arg(long = "no-witness")]
     pub no_witness: bool,
 
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub describe: bool,
 
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub schema: bool,
 
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub version: bool,
 
     #[command(subcommand)]
@@ -47,9 +57,6 @@ pub enum Command {
 pub struct WitnessArgs {
     #[command(subcommand)]
     pub command: WitnessCommand,
-
-    #[arg(long)]
-    pub json: bool,
 }
 
 #[derive(Debug, Clone, Subcommand)]

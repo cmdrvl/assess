@@ -1,16 +1,12 @@
-use serde_json::json;
+use super::AssessOutput;
+use crate::refusal::RefusalEnvelope;
 
-use crate::evaluate::Decision;
+/// Render a successful assess decision as JSON.
+pub fn render_output(output: &AssessOutput) -> String {
+    output.to_json_pretty()
+}
 
-pub fn render(decision: &Decision) -> String {
-    format!(
-        "{}\n",
-        json!({
-            "tool": "assess",
-            "version": "assess.v0",
-            "decision_band": decision.decision_band.as_str(),
-            "matched_rule": decision.matched_rule,
-            "risk_code": decision.risk_code,
-        })
-    )
+/// Render a refusal envelope as JSON.
+pub fn render_refusal(envelope: &RefusalEnvelope) -> String {
+    envelope.to_json_pretty()
 }

@@ -1,19 +1,148 @@
 {
+  "schema_version": "operator.v0",
   "name": "assess",
-  "tool": "assess",
-  "version": "assess.v0",
-  "binary": "assess",
+  "version": "0.1.0",
+  "description": "Deterministic decision classification over a complete spine evidence bundle",
+  "repository": "https://github.com/cmdrvl/assess",
+  "invocation": {
+    "binary": "assess",
+    "usage": [
+      "assess <ARTIFACT>... --policy <POLICY> [OPTIONS]",
+      "assess <ARTIFACT>... --policy-id <ID> [OPTIONS]",
+      "assess witness <query|last|count> [OPTIONS]"
+    ],
+    "output_mode": "report",
+    "output_schema": "assess.v0",
+    "json_flag": "--json"
+  },
+  "arguments": [
+    {
+      "name": "artifact",
+      "type": "file_path",
+      "required": true,
+      "position": 0,
+      "repeating": true,
+      "description": "Spine report artifact included in the epistemic basis"
+    }
+  ],
+  "options": [
+    {
+      "name": "policy",
+      "flag": "--policy",
+      "type": "string",
+      "description": "Policy YAML path or direct selector"
+    },
+    {
+      "name": "policy_id",
+      "flag": "--policy-id",
+      "type": "string",
+      "description": "Resolve policy by ID from the configured search path"
+    },
+    {
+      "name": "json",
+      "flag": "--json",
+      "type": "flag",
+      "description": "Emit JSON output instead of the compact human report"
+    },
+    {
+      "name": "no_witness",
+      "flag": "--no-witness",
+      "type": "flag",
+      "description": "Suppress witness ledger recording on successful assess runs"
+    },
+    {
+      "name": "describe",
+      "flag": "--describe",
+      "type": "flag",
+      "description": "Print compiled operator.json and exit 0 before normal validation"
+    },
+    {
+      "name": "schema",
+      "flag": "--schema",
+      "type": "flag",
+      "description": "Print the assess.v0 JSON Schema and exit 0 before normal validation"
+    },
+    {
+      "name": "version",
+      "flag": "--version",
+      "type": "flag",
+      "description": "Print version and exit 0 before normal validation"
+    }
+  ],
+  "subcommands": [
+    {
+      "name": "witness",
+      "description": "Local witness ledger query commands",
+      "status": "scaffolded",
+      "actions": [
+        { "name": "query", "usage": "assess witness query [FILTERS] [--json]" },
+        { "name": "last", "usage": "assess witness last [--json]" },
+        { "name": "count", "usage": "assess witness count [FILTERS] [--json]" }
+      ],
+      "current_runtime_behavior": {
+        "status": "not_yet_implemented",
+        "error_exit_code": 2
+      }
+    }
+  ],
+  "exit_codes": {
+    "0": { "meaning": "PROCEED", "domain": "positive" },
+    "1": { "meaning": "PROCEED_WITH_RISK or ESCALATE", "domain": "negative" },
+    "2": { "meaning": "BLOCK / REFUSAL / CLI error", "domain": "error" }
+  },
+  "refusals": [
+    {
+      "code": "E_BAD_POLICY",
+      "message": "Policy YAML or schema is invalid for assess.v0",
+      "action": "adjust_input"
+    },
+    {
+      "code": "E_AMBIGUOUS_POLICY",
+      "message": "Both --policy and --policy-id were provided",
+      "action": "adjust_input"
+    },
+    {
+      "code": "E_UNKNOWN_POLICY",
+      "message": "Policy selector could not be resolved",
+      "action": "adjust_input"
+    },
+    {
+      "code": "E_BAD_ARTIFACT",
+      "message": "Artifact JSON is malformed or missing required assess basis fields",
+      "action": "escalate"
+    },
+    {
+      "code": "E_DUPLICATE_TOOL",
+      "message": "Two or more artifacts resolved to the same canonical tool identity",
+      "action": "adjust_input"
+    },
+    {
+      "code": "E_INCOMPLETE_BASIS",
+      "message": "The selected policy requires a tool that is absent from the observed bundle",
+      "action": "adjust_input"
+    },
+    {
+      "code": "E_MISSING_RULE",
+      "message": "No rule matched and no default fallback was available",
+      "action": "escalate"
+    }
+  ],
+  "capabilities": {
+    "formats": ["json"],
+    "profile_aware": false,
+    "streaming": false,
+    "witness": {
+      "ambient_recording": "planned_after-decision-execution",
+      "query_subcommands": "scaffolded",
+      "no_witness_flag": "suppresses_recording"
+    }
+  },
   "pipeline": {
     "upstream": ["shape", "rvl", "verify", "benchmark"],
     "downstream": ["pack"]
   },
-  "exit_codes": {
-    "proceed": 0,
-    "attention": 1,
-    "stop": 2
-  },
-  "commands": [
-    "assess <ARTIFACT>... --policy <POLICY> [OPTIONS]",
-    "assess witness <query|last|count> [OPTIONS]"
+  "notes": [
+    "Metadata surfaces (--describe, --schema, --version) are implemented.",
+    "Decision execution and witness execution remain scaffolded."
   ]
 }
