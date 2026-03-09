@@ -50,7 +50,7 @@ These are not aspirations. They are the contract. If any are violated, assess is
 ### Excluded (not assess's job)
 
 - Producing facts (that's `rvl`, `verify`, `shape`, `benchmark`)
-- Diffing datasets (that's `compare`)
+- Exhaustive diffing or audit surfaces (that belongs to `rvl` or later audit/export tooling)
 - Scoring extractions (that's `benchmark`)
 - Factory conflict resolution (separate tool, see PLAN_FACTORY.md)
 - Tournament ranking (consumers use raw `benchmark.summary.accuracy` after assess gates)
@@ -74,7 +74,7 @@ These are not aspirations. They are the contract. If any are violated, assess is
 
 `assess` is NOT:
 - A truth tool (that's `rvl`, `verify`, `shape`)
-- A diff tool (that's `compare`)
+- An exhaustive diff or audit tool
 - A scoring tool (that's `benchmark`)
 - A general JSON rules engine
 - The factory's conflict resolver
@@ -92,6 +92,7 @@ It does not produce facts. It classifies facts into decisions.
 
 ```
 assess <ARTIFACT>... --policy <POLICY> [OPTIONS]
+assess witness <query|last|count> [OPTIONS]
 
 Arguments:
   <ARTIFACT>...          Spine reports to assess (shape, rvl, verify, benchmark, fingerprint results)
@@ -101,11 +102,24 @@ Options:
   --policy-id <ID>       Policy ID (resolved from search path)
   --json                 JSON output (default: human-readable)
   --no-witness           Suppress witness ledger recording
+  --describe             Print operator.json and exit 0
+  --schema               Print assess.v0 JSON Schema and exit 0
+  --version              Print assess <semver> and exit 0
 ```
 
 One or more artifacts and a policy are required at the CLI level, but the policy's `requires` list must be fully satisfied or `assess` refuses with `E_INCOMPLETE_BASIS`.
 
 `--policy` and `--policy-id` are mutually exclusive; providing both is a refusal (`E_AMBIGUOUS_POLICY`).
+
+`--describe`, `--schema`, and `--version` are checked before normal argument validation.
+
+### Witness subcommands
+
+```text
+assess witness query [FILTERS] [--json]
+assess witness last [--json]
+assess witness count [FILTERS] [--json]
+```
 
 ### Policy resolution order
 
@@ -138,6 +152,7 @@ No soft synonyms. No percentages without definition.
 
 ```json
 {
+  "tool": "assess",
   "version": "assess.v0",
   "decision_band": "ESCALATE",
   "policy": {
@@ -371,7 +386,7 @@ artifact contract.
 
 ## Extensibility
 
-`assess` does not hardcode which tools it understands. Policy rules match on tool keys in the `when` clause. Any structured report with a `version` and `outcome` and/or `refusal` field can be assessed. If the report exposes top-level `tool`, that value is authoritative; otherwise `assess` falls back to version-derived tool identity. For example, a factory conflict resolution engine might emit:
+`assess` does not hardcode which spine-compatible report tools it understands. Policy rules match on tool keys in the `when` clause. Any structured report artifact that follows the spine report contract (`version`, optional top-level `tool`, and `outcome` and/or `refusal`) can be assessed. `assess` still does not accept arbitrary ad hoc JSON. If the report exposes top-level `tool`, that value is authoritative; otherwise `assess` falls back to version-derived tool identity. For example, a future factory conflict tool might emit:
 
 ```json
 {
@@ -415,7 +430,9 @@ You preserve honesty and momentum.
 # Assess a reconciliation against a policy
 shape nov.csv dec.csv --json > shape.json
 rvl nov.csv dec.csv --json > rvl.json
-verify dec.csv --rules rules.json --json > verify.json
+verify run constraints/loan_tape.monthly.v1.json \
+  --bind input=dec.csv \
+  --json > verify.json
 
 assess shape.json rvl.json verify.json \
   --policy loan_tape.monthly.v1 \
@@ -442,6 +459,9 @@ pack seal shape.json rvl.json verify.json decision.json nov.lock.json dec.lock.j
 assess/
 ├── Cargo.toml
 ├── operator.json
+├── schemas/
+│   ├── assess.v0.schema.json
+│   └── policy.v0.schema.json
 ├── rules/
 │   ├── exit-code-range.yml
 │   ├── no-hashmap-in-output.yml
@@ -530,6 +550,7 @@ assess/
 | I11 | Every provided artifact appears in `epistemic_basis`, even if not in `requires` | Silent artifact dropping |
 | I12 | `matched_rule` in output is the `name` field of the rule that won | Output not traceable to the specific policy rule |
 | I13 | Canonical tool identity uses top-level `tool` when present, otherwise falls back to version-derived identity | Incompatibility between explicit-tool reports and legacy version-only reports |
+| I14 | Top-level `tool` in every successful output and refusal envelope is always `assess` | New assess artifacts inheriting avoidable version-only protocol debt |
 
 ---
 
@@ -585,13 +606,13 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 | ID | Scope | Behavioral contract |
 |----|-------|---------------------|
 | C01 | Exit codes | PROCEED → 0, PROCEED_WITH_RISK → 1, ESCALATE → 1, BLOCK → 2, any refusal → 2 |
-| C02 | Refusal envelope | Every refusal produces valid JSON: `{ "version": "assess.v0", "decision_band": null, "refusal": { "code": "E_...", "detail": "...", "next": "..." } }` |
+| C02 | Refusal envelope | Every refusal produces valid JSON: `{ "tool": "assess", "version": "assess.v0", "decision_band": null, "refusal": { "code": "E_...", "message": "...", "detail": { ... }, "next_command": "..." } }` |
 | C03 | Policy loading | Policies resolve in order: `ASSESS_POLICY_PATH` → builtins → `~/.epistemic/policies/`. First match wins. |
 | C04 | Policy validation | Invalid policies produce `E_BAD_POLICY` with a diagnostic message identifying the specific violation |
 | C05 | Bundle construction | Canonical tool identity uses explicit top-level `tool` when present, otherwise version-derived fallback. Duplicates refused. Every artifact recorded in `epistemic_basis`. |
 | C06 | Rule matching | Rules evaluated in declaration order against the whole bundle. First rule whose `when` clause matches wins. Match surface: `outcome`, `outcome_in`, `refusal`, `signals` (exact equality only). |
 | C07 | Default rule | `default: true` always matches when reached. Must be last rule. If no rule matches and no default exists, refusal `E_MISSING_RULE`. |
-| C08 | Output schema | JSON output conforms to `assess.v0` schema. `matched_rule`, `required_tools`, `observed_tools`, `risk_factors`, `epistemic_basis` all present. |
+| C08 | Output schema | JSON output conforms to `assess.v0` schema. Top-level `tool` is always `assess`, and `matched_rule`, `required_tools`, `observed_tools`, `risk_factors`, `epistemic_basis` are all present. |
 | C09 | Witness | Every invocation appends a witness record to `~/.epistemic/witness.jsonl` unless `--no-witness`. Record includes: tool name, input paths, policy ID, decision band, duration. |
 | C10 | Pipeline compat | `assess` output is a valid member artifact for `pack seal`. The `version` field is `assess.v0`. |
 | C11 | Determinism | Identical inputs (same artifact bytes, same policy bytes) produce byte-identical output across runs, platforms, and Rust compiler versions. |
@@ -609,7 +630,7 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 | T04 | Policy with no default rule and unmatched bundle state | `evaluate::matcher` returns `EvalError::NoMatchingRule` | `E_MISSING_RULE` |
 | T05 | Both `--policy` and `--policy-id` provided | `cli::args` validates mutual exclusivity at parse time | `E_AMBIGUOUS_POLICY` |
 | T06 | Artifact JSON with missing `version`, malformed explicit `tool`, or non-derivable fallback version | `bundle::artifact` validates canonical tool resolution inputs | `E_BAD_ARTIFACT` |
-| T07 | Empty artifact list (no positional args) | `clap` enforces `required = true` on positional args | clap error (not a refusal) |
+| T07 | Empty artifact list (no positional args) | `clap` enforces `required = true` on positional args | CLI parse error (exit 2, not a refusal envelope) |
 | T08 | Policy containing `condition` fields from pre-narrowing spec | `policy::validate` rejects unknown fields in `when` clauses | `E_BAD_POLICY` |
 | T09 | Non-deterministic output from HashMap serialization | `#![forbid]` on HashMap in output types; golden rule enforced | Build-time / test-time |
 | T10 | Artifact with `outcome: null` but no `refusal` block | Valid state (tool ran but produced no outcome and no refusal). Recorded in `epistemic_basis` but may not match any rule. | Falls through to default or `E_MISSING_RULE` |
@@ -624,7 +645,7 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 
 **Satisfies:** C01, C02
 
-**Gate:** `assess --help` prints usage. `assess` with no args exits 2 with valid refusal JSON. All 7 refusal codes are defined as enum variants.
+**Gate:** `assess --help` prints usage. `assess --describe`, `assess --schema`, and `assess --version` all exit 0 before normal argument validation. Malformed CLI usage exits 2 through the parse path, and all 7 refusal codes are defined as enum variants for semantic failures after parsing.
 
 ### D2 — Policy loader + validation
 
