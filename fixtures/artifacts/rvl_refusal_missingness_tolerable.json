@@ -1,0 +1,10 @@
+{
+  "tool": "rvl",
+  "version": "rvl.v0",
+  "refusal": {
+    "code": "E_MISSINGNESS"
+  },
+  "policy_signals": {
+    "missingness_band": "TOLERABLE"
+  }
+}

@@ -1,0 +1,19 @@
+policy_id: loan_tape.monthly.v1
+policy_version: 1
+description: Monthly loan tape reconciliation policy
+requires:
+  - shape
+  - rvl
+  - verify
+rules:
+  - name: clean_bundle
+    when:
+      tool: verify
+      outcome: PASS
+    then:
+      decision_band: PROCEED
+  - name: default_block
+    default: true
+    then:
+      decision_band: BLOCK
+      risk_code: UNHANDLED_CONDITION

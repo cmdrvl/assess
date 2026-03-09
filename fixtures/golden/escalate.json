@@ -1,0 +1,6 @@
+{
+  "tool": "assess",
+  "version": "assess.v0",
+  "decision_band": "ESCALATE",
+  "risk_code": "DIFFUSE_CHANGE"
+}

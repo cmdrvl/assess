@@ -1,0 +1,6 @@
+{
+  "tool": "assess",
+  "version": "assess.v0",
+  "decision_band": "BLOCK",
+  "risk_code": "UNHANDLED_CONDITION"
+}

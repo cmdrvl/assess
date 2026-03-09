@@ -1,0 +1,8 @@
+{
+  "tool": "rvl",
+  "version": "rvl.v0",
+  "refusal": {
+    "code": "E_DIFFUSE"
+  },
+  "policy_signals": {}
+}

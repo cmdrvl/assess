@@ -1,0 +1,6 @@
+{
+  "tool": "assess",
+  "version": "assess.v0",
+  "decision_band": "PROCEED_WITH_RISK",
+  "risk_code": "PARTIAL_SCHEMA_OVERLAP"
+}

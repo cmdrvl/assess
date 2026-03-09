@@ -1,0 +1,8 @@
+policy_id: default.v0
+policy_version: 1
+rules:
+  - name: default_block
+    default: true
+    then:
+      decision_band: BLOCK
+      risk_code: UNHANDLED_CONDITION

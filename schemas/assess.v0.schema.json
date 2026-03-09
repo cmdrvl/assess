@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "assess.v0",
+  "type": "object",
+  "required": ["tool", "version"],
+  "properties": {
+    "tool": { "const": "assess" },
+    "version": { "const": "assess.v0" },
+    "decision_band": {
+      "type": ["string", "null"],
+      "enum": ["PROCEED", "PROCEED_WITH_RISK", "ESCALATE", "BLOCK", null]
+    },
+    "matched_rule": { "type": ["string", "null"] },
+    "risk_code": { "type": ["string", "null"] },
+    "epistemic_basis": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "refusal": { "type": ["object", "null"] }
+  },
+  "additionalProperties": true
+}

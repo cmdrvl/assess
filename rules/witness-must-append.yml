@@ -1,0 +1,2 @@
+rule_id: assess.witness-must-append
+description: Successful assess runs append a local witness record unless --no-witness is set.

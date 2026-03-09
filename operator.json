@@ -1,0 +1,19 @@
+{
+  "name": "assess",
+  "tool": "assess",
+  "version": "assess.v0",
+  "binary": "assess",
+  "pipeline": {
+    "upstream": ["shape", "rvl", "verify", "benchmark"],
+    "downstream": ["pack"]
+  },
+  "exit_codes": {
+    "proceed": 0,
+    "attention": 1,
+    "stop": 2
+  },
+  "commands": [
+    "assess <ARTIFACT>... --policy <POLICY> [OPTIONS]",
+    "assess witness <query|last|count> [OPTIONS]"
+  ]
+}

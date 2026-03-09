@@ -1,0 +1,2 @@
+rule_id: assess.exit-code-range
+description: Exit codes must remain within the documented 0/1/2 range.

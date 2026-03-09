@@ -1,0 +1,2 @@
+rule_id: assess.no-hashmap-in-output
+description: Output rendering must stay deterministic and avoid HashMap-driven key order.
