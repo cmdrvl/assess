@@ -38,7 +38,7 @@ These are not aspirations. They are the contract. If any are violated, assess is
 
 - Load and validate YAML policy files (`policy.v0` schema)
 - Load and parse JSON spine artifacts
-- Derive tool names from artifact `version` fields
+- Resolve canonical tool identity from top-level `tool` when present, otherwise derive it from artifact `version`
 - Validate `requires` completeness and tool uniqueness
 - Match the artifact bundle against ordered `when` clauses (exact equality)
 - Emit a single `assess.v0` JSON decision to stdout
@@ -174,7 +174,7 @@ No soft synonyms. No percentages without definition.
     {
       "artifact": "verify.report.json",
       "tool": "verify",
-      "version": "verify.v0",
+      "version": "verify.report.v1",
       "outcome": "PASS",
       "policy_signals": {}
     }
@@ -320,14 +320,41 @@ This keeps the line clean:
 
 ---
 
-## Tool name derivation
+## Tool identity resolution
 
-Spine tool outputs carry a `version` field (e.g., `rvl.v0`, `verify.v0`, `benchmark.v0`) but no explicit `tool` field. `assess` derives the tool name by stripping the `.v<N>` suffix from the `version` field: `shape.v0` → `shape`, `verify.v0` → `verify`, `benchmark.v0` → `benchmark`. This is temporary protocol debt; the long-term contract should add explicit `tool` to every spine output.
+`assess` needs one canonical tool name per artifact for:
+
+- `requires`
+- duplicate detection
+- rule matching
+- `observed_tools`
+- `epistemic_basis[*].tool`
+- `risk_factors[*].source_tool`
+
+V0 resolution rule:
+
+1. if top-level `tool` exists, use it
+2. otherwise derive the tool name by stripping the `.v<N>` suffix from `version`
+
+Examples:
+
+- `{ "tool": "verify", "version": "verify.report.v1" }` → `verify`
+- `{ "version": "benchmark.v0" }` → `benchmark`
+- `{ "version": "shape.v0" }` → `shape`
+
+This keeps `assess` compatible with both:
+
+- newer explicit-tool reports like `verify.report.v1`
+- legacy reports that only expose `version`
+
+`version` remains required even when `tool` is present. The explicit `tool`
+field is authoritative for tool identity; `version` continues to identify the
+artifact contract.
 
 ## Rule evaluation
 
-- At most one artifact per tool is allowed; duplicates are a refusal (`E_DUPLICATE_TOOL`)
-- The policy's `requires` list must be a subset of observed tools; otherwise `assess` refuses with `E_INCOMPLETE_BASIS`
+- At most one artifact per canonical tool identity is allowed; duplicates are a refusal (`E_DUPLICATE_TOOL`)
+- The policy's `requires` list must be a subset of observed canonical tool identities; otherwise `assess` refuses with `E_INCOMPLETE_BASIS`
 - Rules are evaluated in order against the **whole bundle**; the first rule whose `when` clause matches the bundle wins
 - A `when` clause may match only:
   - `outcome`
@@ -344,7 +371,7 @@ Spine tool outputs carry a `version` field (e.g., `rvl.v0`, `verify.v0`, `benchm
 
 ## Extensibility
 
-`assess` does not hardcode which tools it understands. Policy rules match on tool keys in the `when` clause. Any structured report with a `version` and `outcome` and/or `refusal` field can be assessed. For example, a factory conflict resolution engine might emit:
+`assess` does not hardcode which tools it understands. Policy rules match on tool keys in the `when` clause. Any structured report with a `version` and `outcome` and/or `refusal` field can be assessed. If the report exposes top-level `tool`, that value is authoritative; otherwise `assess` falls back to version-derived tool identity. For example, a factory conflict resolution engine might emit:
 
 ```json
 {
@@ -434,7 +461,7 @@ assess/
 │   ├── bundle/
 │   │   ├── mod.rs               — Artifact bundle construction
 │   │   ├── artifact.rs          — Single artifact types (tool, version, outcome, refusal, signals)
-│   │   └── derive.rs            — Tool name derivation from version field (strip .v<N>)
+│   │   └── derive.rs            — Canonical tool identity resolution (explicit `tool` first, version fallback)
 │   ├── evaluate/
 │   │   ├── mod.rs               — Evaluation orchestrator (check requires → match rules → emit decision)
 │   │   └── matcher.rs           — Rule matching: when-clause against bundle (exact equality)
@@ -493,7 +520,7 @@ assess/
 | I01 | Same artifacts + same policy = same decision, byte-for-byte | Non-determinism from HashMap, timestamps, or ambient state |
 | I02 | The output `decision_band` equals exactly the `then.decision_band` of the matched rule | Aggregation bugs, implicit band promotion/demotion |
 | I03 | If any tool in `requires` is absent from the bundle, assess refuses `E_INCOMPLETE_BASIS` | Partial evidence producing false confidence |
-| I04 | At most one artifact per derived tool name in the bundle | Ambiguous state from duplicate tool reports |
+| I04 | At most one artifact per canonical tool identity in the bundle | Ambiguous state from duplicate tool reports |
 | I05 | Rules are evaluated in declaration order; first match wins | Order-dependent rule sets producing wrong decisions if evaluation order changes |
 | I06 | The default rule (if present) must be last; it always matches when reached | Rules after default being dead code |
 | I07 | `policy.sha256` in output = SHA-256 of the policy file's raw bytes | Stale or tampered policy hash making output unverifiable |
@@ -502,6 +529,7 @@ assess/
 | I10 | Witness record is appended for every invocation unless `--no-witness` is set | Lost audit trail for production decisions |
 | I11 | Every provided artifact appears in `epistemic_basis`, even if not in `requires` | Silent artifact dropping |
 | I12 | `matched_rule` in output is the `name` field of the rule that won | Output not traceable to the specific policy rule |
+| I13 | Canonical tool identity uses top-level `tool` when present, otherwise falls back to version-derived identity | Incompatibility between explicit-tool reports and legacy version-only reports |
 
 ---
 
@@ -514,8 +542,8 @@ assess/
 | `E_BAD_POLICY` | YAML parse failure, missing required fields, rule without `decision_band`, non-PROCEED rule without `risk_code`, default rule not last | 2 | `policy::validate` |
 | `E_AMBIGUOUS_POLICY` | Both `--policy` and `--policy-id` provided | 2 | `cli::args` |
 | `E_UNKNOWN_POLICY` | Policy ID not found in any resolution path | 2 | `policy::loader` |
-| `E_BAD_ARTIFACT` | JSON parse failure, missing `version` field, version field doesn't match `*.v<N>` pattern | 2 | `bundle::artifact` |
-| `E_DUPLICATE_TOOL` | Two or more artifacts derive to the same tool name | 2 | `bundle::mod` |
+| `E_BAD_ARTIFACT` | JSON parse failure, missing `version` field, malformed explicit `tool`, or version field doesn't match `*.v<N>` when fallback derivation is needed | 2 | `bundle::artifact` |
+| `E_DUPLICATE_TOOL` | Two or more artifacts resolve to the same canonical tool identity | 2 | `bundle::mod` |
 | `E_INCOMPLETE_BASIS` | Policy `requires` lists a tool not present in the bundle | 2 | `evaluate::mod` |
 | `E_MISSING_RULE` | No rule matched and no default rule exists | 2 | `evaluate::matcher` |
 
@@ -536,6 +564,7 @@ enum BundleError {
     Io(std::io::Error),
     JsonParse { path: PathBuf, source: serde_json::Error },
     NoVersion { path: PathBuf },
+    BadTool { path: PathBuf, tool: String },
     BadVersion { path: PathBuf, version: String },
     DuplicateTool { tool: String, paths: [PathBuf; 2] },
 }
@@ -559,7 +588,7 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 | C02 | Refusal envelope | Every refusal produces valid JSON: `{ "version": "assess.v0", "decision_band": null, "refusal": { "code": "E_...", "detail": "...", "next": "..." } }` |
 | C03 | Policy loading | Policies resolve in order: `ASSESS_POLICY_PATH` → builtins → `~/.epistemic/policies/`. First match wins. |
 | C04 | Policy validation | Invalid policies produce `E_BAD_POLICY` with a diagnostic message identifying the specific violation |
-| C05 | Bundle construction | Tool names derived by stripping `.v<N>` suffix from `version` field. Duplicates refused. Every artifact recorded in `epistemic_basis`. |
+| C05 | Bundle construction | Canonical tool identity uses explicit top-level `tool` when present, otherwise version-derived fallback. Duplicates refused. Every artifact recorded in `epistemic_basis`. |
 | C06 | Rule matching | Rules evaluated in declaration order against the whole bundle. First rule whose `when` clause matches wins. Match surface: `outcome`, `outcome_in`, `refusal`, `signals` (exact equality only). |
 | C07 | Default rule | `default: true` always matches when reached. Must be last rule. If no rule matches and no default exists, refusal `E_MISSING_RULE`. |
 | C08 | Output schema | JSON output conforms to `assess.v0` schema. `matched_rule`, `required_tools`, `observed_tools`, `risk_factors`, `epistemic_basis` all present. |
@@ -575,11 +604,11 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 | ID | Threat | Mitigation | Refusal code |
 |----|--------|------------|--------------|
 | T01 | Malformed policy YAML (syntax errors, wrong types, missing fields) | `policy::validate` rejects before evaluation begins | `E_BAD_POLICY` |
-| T02 | Duplicate artifacts for the same tool | `bundle::mod` checks after tool derivation | `E_DUPLICATE_TOOL` |
+| T02 | Duplicate artifacts for the same canonical tool identity | `bundle::mod` checks after tool resolution | `E_DUPLICATE_TOOL` |
 | T03 | Incomplete evidence (policy requires tools not in bundle) | `evaluate::mod` checks `requires` before rule matching | `E_INCOMPLETE_BASIS` |
 | T04 | Policy with no default rule and unmatched bundle state | `evaluate::matcher` returns `EvalError::NoMatchingRule` | `E_MISSING_RULE` |
 | T05 | Both `--policy` and `--policy-id` provided | `cli::args` validates mutual exclusivity at parse time | `E_AMBIGUOUS_POLICY` |
-| T06 | Artifact JSON with missing or malformed `version` field | `bundle::artifact` validates version pattern `*.v<N>` | `E_BAD_ARTIFACT` |
+| T06 | Artifact JSON with missing `version`, malformed explicit `tool`, or non-derivable fallback version | `bundle::artifact` validates canonical tool resolution inputs | `E_BAD_ARTIFACT` |
 | T07 | Empty artifact list (no positional args) | `clap` enforces `required = true` on positional args | clap error (not a refusal) |
 | T08 | Policy containing `condition` fields from pre-narrowing spec | `policy::validate` rejects unknown fields in `when` clauses | `E_BAD_POLICY` |
 | T09 | Non-deterministic output from HashMap serialization | `#![forbid]` on HashMap in output types; golden rule enforced | Build-time / test-time |
@@ -607,13 +636,13 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 
 **Depends on:** D1
 
-### D3 — Bundle construction + tool derivation
+### D3 — Bundle construction + tool resolution
 
 **Build:** `bundle/artifact.rs`, `bundle/derive.rs`, `bundle/mod.rs`
 
 **Satisfies:** C05, I03, I04, I11
 
-**Gate:** JSON artifacts parse into typed structs. Tool name derived from `version` field. Duplicate tool names produce `E_DUPLICATE_TOOL`. Missing version field produces `E_BAD_ARTIFACT`. All artifacts recorded.
+**Gate:** JSON artifacts parse into typed structs. Canonical tool identity resolves from explicit top-level `tool` when present, otherwise from `version`. Duplicate canonical tool identities produce `E_DUPLICATE_TOOL`. Missing version field or malformed explicit tool produces `E_BAD_ARTIFACT`. All artifacts recorded.
 
 **Depends on:** D1
 
@@ -681,23 +710,25 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 | U04 | C04 | T08 | — | unit | Rule with `condition` field → `E_BAD_POLICY` |
 | U05 | C04 | T01 | I06 | unit | Default rule not last → `E_BAD_POLICY` |
 | U06 | C04 | — | I08 | unit | Non-PROCEED rule without `risk_code` → `E_BAD_POLICY` |
-| U07 | C05 | — | — | unit | Version `shape.v0` derives tool name `shape` |
-| U08 | C05 | T06 | — | unit | Artifact with no `version` → `E_BAD_ARTIFACT` |
-| U09 | C05 | T06 | — | unit | Version `bad_format` (no `.v<N>`) → `E_BAD_ARTIFACT` |
-| U10 | C05 | T02 | I04 | unit | Two shape artifacts → `E_DUPLICATE_TOOL` |
-| U11 | — | — | I03 | unit | Policy requires `verify`, bundle has only shape + rvl → `E_INCOMPLETE_BASIS` |
-| U12 | C06 | — | I05 | unit | Clean bundle matches `clean_reconciliation` (first rule) → PROCEED |
-| U13 | C06 | — | I02 | unit | Partial overlap bundle → PROCEED_WITH_RISK, `risk_code: PARTIAL_SCHEMA_OVERLAP` |
-| U14 | C06 | — | — | unit | `outcome_in` matches any value in the list |
-| U15 | C06 | — | — | unit | `refusal` matches on `refusal.code` field |
-| U16 | C06 | — | — | unit | `signals` exact-equality match (key + value must both match) |
-| U17 | C06 | — | — | unit | `when` clause with tool not in bundle: clause does not match |
-| U18 | C07 | T04 | — | unit | No rule matches, no default → `E_MISSING_RULE` |
-| U19 | C07 | — | I06 | unit | Default rule catches unmatched state → BLOCK |
-| U20 | C12 | — | I07 | unit | Policy SHA-256 in output matches file hash |
-| U21 | — | — | I12 | unit | Output `matched_rule` equals winning rule's `name` field |
-| U22 | — | — | I11 | unit | Extra artifact (not in `requires`) appears in `epistemic_basis` |
-| U23 | — | T10 | — | unit | Artifact with `outcome: null` and no refusal: recorded, may not match any rule |
+| U07 | C05 | — | I13 | unit | Artifact `{version: \"shape.v0\"}` resolves canonical tool `shape` |
+| U08 | C05 | — | I13 | unit | Artifact `{tool: \"verify\", version: \"verify.report.v1\"}` resolves canonical tool `verify` |
+| U09 | C05 | T06 | — | unit | Artifact with no `version` → `E_BAD_ARTIFACT` |
+| U10 | C05 | T06 | — | unit | Artifact with malformed explicit `tool` → `E_BAD_ARTIFACT` |
+| U11 | C05 | T06 | — | unit | Version `bad_format` (no `.v<N>`) and no explicit `tool` → `E_BAD_ARTIFACT` |
+| U12 | C05 | T02 | I04 | unit | One `{tool: \"verify\", version: \"verify.report.v1\"}` and one `{version: \"verify.v0\"}` artifact → `E_DUPLICATE_TOOL` |
+| U13 | — | — | I03 | unit | Policy requires `verify`, bundle has only shape + rvl → `E_INCOMPLETE_BASIS` |
+| U14 | C06 | — | I05 | unit | Clean bundle matches `clean_reconciliation` (first rule) → PROCEED |
+| U15 | C06 | — | I02 | unit | Partial overlap bundle → PROCEED_WITH_RISK, `risk_code: PARTIAL_SCHEMA_OVERLAP` |
+| U16 | C06 | — | — | unit | `outcome_in` matches any value in the list |
+| U17 | C06 | — | — | unit | `refusal` matches on `refusal.code` field |
+| U18 | C06 | — | — | unit | `signals` exact-equality match (key + value must both match) |
+| U19 | C06 | — | — | unit | `when` clause with tool not in bundle: clause does not match |
+| U20 | C07 | T04 | — | unit | No rule matches, no default → `E_MISSING_RULE` |
+| U21 | C07 | — | I06 | unit | Default rule catches unmatched state → BLOCK |
+| U22 | C12 | — | I07 | unit | Policy SHA-256 in output matches file hash |
+| U23 | — | — | I12 | unit | Output `matched_rule` equals winning rule's `name` field |
+| U24 | — | — | I11 | unit | Extra artifact (not in `requires`) appears in `epistemic_basis` |
+| U25 | — | T10 | — | unit | Artifact with `outcome: null` and no refusal: recorded, may not match any rule |
 
 ### Integration tests
 
@@ -715,6 +746,7 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 | E10 | C08 | — | — | integration | `--json` produces valid JSON; no `--json` produces human summary |
 | E11 | C03 | — | — | integration | Policy resolved from `ASSESS_POLICY_PATH` env var |
 | E12 | — | T08 | — | integration | Policy with `condition: "x >= 0.5"` → `E_BAD_POLICY` |
+| E13 | C05 | T02 | I13 | integration | `verify.report.v1` artifact plus legacy `benchmark.v0` artifact resolve to `verify` and `benchmark` and match a tournament policy cleanly |
 
 ---
 
