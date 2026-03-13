@@ -45,6 +45,13 @@
       "description": "Emit JSON output instead of the compact human report"
     },
     {
+      "name": "render",
+      "flag": "--render",
+      "type": "enum",
+      "values": ["summary", "summary-tsv"],
+      "description": "Emit compact summary output derived from the existing decision/refusal object"
+    },
+    {
       "name": "no_witness",
       "flag": "--no-witness",
       "type": "flag",
@@ -73,14 +80,14 @@
     {
       "name": "witness",
       "description": "Local witness ledger query commands",
-      "status": "scaffolded",
+      "status": "implemented",
       "actions": [
         { "name": "query", "usage": "assess witness query [FILTERS] [--json]" },
         { "name": "last", "usage": "assess witness last [--json]" },
         { "name": "count", "usage": "assess witness count [FILTERS] [--json]" }
       ],
       "current_runtime_behavior": {
-        "status": "not_yet_implemented",
+        "status": "implemented",
         "error_exit_code": 2
       }
     }
@@ -128,12 +135,12 @@
     }
   ],
   "capabilities": {
-    "formats": ["json"],
+    "formats": ["human", "json", "summary", "summary-tsv"],
     "profile_aware": false,
     "streaming": false,
     "witness": {
-      "ambient_recording": "planned_after-decision-execution",
-      "query_subcommands": "scaffolded",
+      "ambient_recording": "implemented_after-successful-decision-execution",
+      "query_subcommands": "implemented",
       "no_witness_flag": "suppresses_recording"
     }
   },
@@ -143,6 +150,7 @@
   },
   "notes": [
     "Metadata surfaces (--describe, --schema, --version) are implemented.",
-    "Decision execution and witness execution remain scaffolded."
+    "Decision execution and witness execution are implemented.",
+    "Run mode supports compact summary and TSV summary render surfaces via --render."
   ]
 }

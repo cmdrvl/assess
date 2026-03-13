@@ -75,17 +75,27 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
         .collect::<BTreeSet<_>>();
     assert_eq!(refusal_codes, expected_refusal_codes);
 
-    assert_eq!(operator["subcommands"][0]["name"], "witness");
-    assert_eq!(operator["subcommands"][0]["status"], "scaffolded");
     assert_eq!(
-        operator["subcommands"][0]["current_runtime_behavior"]["error_exit_code"],
-        2
+        operator["capabilities"]["formats"],
+        serde_json::json!(["human", "json", "summary", "summary-tsv"])
+    );
+    assert_eq!(operator["options"][3]["flag"], "--render");
+    assert_eq!(
+        operator["options"][3]["values"],
+        serde_json::json!(["summary", "summary-tsv"])
+    );
+    assert_eq!(operator["subcommands"][0]["name"], "witness");
+    assert_eq!(operator["subcommands"][0]["status"], "implemented");
+    assert_eq!(
+        operator["subcommands"][0]["current_runtime_behavior"]["status"],
+        "implemented"
     );
     assert_eq!(
         operator["notes"],
         serde_json::json!([
             "Metadata surfaces (--describe, --schema, --version) are implemented.",
-            "Decision execution and witness execution remain scaffolded."
+            "Decision execution and witness execution are implemented.",
+            "Run mode supports compact summary and TSV summary render surfaces via --render."
         ])
     );
 

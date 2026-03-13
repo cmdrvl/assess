@@ -1,6 +1,12 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum RunRenderMode {
+    Summary,
+    SummaryTsv,
+}
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -31,6 +37,9 @@ pub struct Cli {
 
     #[arg(long, global = true)]
     pub json: bool,
+
+    #[arg(long, value_enum, conflicts_with = "json")]
+    pub render: Option<RunRenderMode>,
 
     #[arg(long = "no-witness")]
     pub no_witness: bool,

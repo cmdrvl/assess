@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use super::AssessOutput;
+use super::{AssessOutput, AssessResult, RenderContext};
 use crate::refusal::RefusalEnvelope;
 
 /// Render a successful assess decision in human-readable form.
@@ -48,4 +48,125 @@ pub fn render_refusal(envelope: &RefusalEnvelope) -> String {
     writeln!(buf, "message: {}", envelope.refusal.message).unwrap();
     writeln!(buf, "next: {}", envelope.refusal.next_command).unwrap();
     buf
+}
+
+pub fn render_summary(result: &AssessResult, context: RenderContext) -> String {
+    let row = SummaryRow::from_result(result, context);
+    format!(
+        "tool={} version={} outcome={} decision={} matched_rule={} risk_code={} required_tools={} observed_tools={} witness={} refusal_code={}",
+        row.tool,
+        row.version,
+        row.outcome,
+        row.decision,
+        row.matched_rule,
+        row.risk_code,
+        row.required_tools,
+        row.observed_tools,
+        row.witness,
+        row.refusal_code
+    )
+}
+
+pub fn render_summary_tsv(result: &AssessResult, context: RenderContext) -> String {
+    let row = SummaryRow::from_result(result, context);
+    let header = [
+        "tool",
+        "version",
+        "outcome",
+        "decision",
+        "matched_rule",
+        "risk_code",
+        "required_tools",
+        "observed_tools",
+        "witness",
+        "refusal_code",
+    ]
+    .join("\t");
+    let values = [
+        row.tool,
+        row.version,
+        row.outcome,
+        row.decision,
+        row.matched_rule,
+        row.risk_code,
+        row.required_tools,
+        row.observed_tools,
+        row.witness,
+        row.refusal_code,
+    ]
+    .map(sanitize_tsv)
+    .join("\t");
+
+    format!("{header}\n{values}")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SummaryRow {
+    tool: String,
+    version: String,
+    outcome: String,
+    decision: String,
+    matched_rule: String,
+    risk_code: String,
+    required_tools: String,
+    observed_tools: String,
+    witness: String,
+    refusal_code: String,
+}
+
+impl SummaryRow {
+    fn from_result(result: &AssessResult, context: RenderContext) -> Self {
+        match result {
+            AssessResult::Decision(output) => Self {
+                tool: output.tool.clone(),
+                version: output.version.clone(),
+                outcome: "DECISION".to_owned(),
+                decision: output.decision_band.clone(),
+                matched_rule: output.matched_rule.clone(),
+                risk_code: joined_or_placeholder(
+                    output
+                        .risk_factors
+                        .iter()
+                        .map(|factor| factor.code.as_str()),
+                ),
+                required_tools: joined_or_placeholder(
+                    output.required_tools.iter().map(String::as_str),
+                ),
+                observed_tools: joined_or_placeholder(
+                    output.observed_tools.iter().map(String::as_str),
+                ),
+                witness: context.witness_status.as_str().to_owned(),
+                refusal_code: placeholder(""),
+            },
+            AssessResult::Refusal(envelope) => Self {
+                tool: envelope.tool.clone(),
+                version: envelope.version.clone(),
+                outcome: "REFUSAL".to_owned(),
+                decision: placeholder(""),
+                matched_rule: placeholder(""),
+                risk_code: placeholder(""),
+                required_tools: placeholder(""),
+                observed_tools: placeholder(""),
+                witness: context.witness_status.as_str().to_owned(),
+                refusal_code: envelope.refusal.code.as_str().to_owned(),
+            },
+        }
+    }
+}
+
+fn joined_or_placeholder<'a>(values: impl Iterator<Item = &'a str>) -> String {
+    let joined = values.collect::<Vec<_>>().join(",");
+    placeholder(&joined)
+}
+
+fn placeholder(value: &str) -> String {
+    if value.is_empty() {
+        "-".to_owned()
+    } else {
+        value.to_owned()
+    }
+}
+
+fn sanitize_tsv(value: String) -> String {
+    value.replace(['\t', '\n', '\r'], " ")
 }

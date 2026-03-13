@@ -12,6 +12,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cli::{AssessExit, Cli, Route, RouteError};
+use output::{RenderContext, RenderMode, WitnessStatus};
 use refusal::RefusalEnvelope;
 use thiserror::Error;
 
@@ -35,8 +36,17 @@ impl Execution {
         }
     }
 
-    pub fn refusal(refusal: RefusalEnvelope) -> Self {
-        Self::new(AssessExit::Stop, refusal.to_json())
+    pub fn refusal(
+        refusal: RefusalEnvelope,
+        render_mode: RenderMode,
+        witness_status: WitnessStatus,
+    ) -> Self {
+        let stdout = output::render_with_context(
+            &output::AssessResult::Refusal(refusal),
+            render_mode,
+            RenderContext::with_witness_status(witness_status),
+        );
+        Self::new(AssessExit::Stop, stdout)
     }
 }
 
@@ -59,7 +69,11 @@ pub fn execute(cli: Cli) -> Result<Execution, AssessError> {
         Ok(Route::Witness(invocation)) => execute_witness(invocation),
         Ok(Route::Run(command)) => execute_run(command),
         Err(RouteError::Usage(error)) => Err(AssessError::Usage(*error)),
-        Err(RouteError::Refusal(refusal)) => Ok(Execution::refusal(*refusal)),
+        Err(RouteError::Refusal {
+            refusal,
+            render_mode,
+            witness_status,
+        }) => Ok(Execution::refusal(*refusal, render_mode, witness_status)),
     }
 }
 
@@ -73,6 +87,8 @@ fn with_trailing_newline(value: &str) -> String {
 
 fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
     let start = Instant::now();
+    let refusal_context =
+        RenderContext::with_witness_status(refusal_witness_status(command.no_witness));
 
     let loaded_policy = match &command.policy_selector {
         cli::PolicySelector::Path(path) => policy::load_path(Path::new(path)),
@@ -83,9 +99,10 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
         Ok(lp) => lp,
         Err(error) => {
             let refusal = RefusalEnvelope::new(error.refusal_code(), error.to_string());
-            let stdout = output::render(
+            let stdout = output::render_with_context(
                 &output::AssessResult::Refusal(refusal.clone()),
-                command.json,
+                command.render_mode,
+                refusal_context,
             );
             return Ok(Execution::new(AssessExit::Stop, stdout));
         }
@@ -95,9 +112,10 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
         Ok(b) => b,
         Err(error) => {
             let refusal = RefusalEnvelope::new(error.refusal_code(), error.to_string());
-            let stdout = output::render(
+            let stdout = output::render_with_context(
                 &output::AssessResult::Refusal(refusal.clone()),
-                command.json,
+                command.render_mode,
+                refusal_context,
             );
             return Ok(Execution::new(AssessExit::Stop, stdout));
         }
@@ -107,9 +125,10 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
         Ok(d) => d,
         Err(error) => {
             let refusal = RefusalEnvelope::new(error.refusal_code(), error.to_string());
-            let stdout = output::render(
+            let stdout = output::render_with_context(
                 &output::AssessResult::Refusal(refusal.clone()),
-                command.json,
+                command.render_mode,
+                refusal_context,
             );
             return Ok(Execution::new(AssessExit::Stop, stdout));
         }
@@ -117,9 +136,9 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
 
     let exit = AssessExit::from_decision_band(decision.decision_band);
     let assess_output = output::build_output(&decision, &artifact_bundle, &loaded_policy);
-    let stdout = output::render(&output::AssessResult::Decision(assess_output), command.json);
-
-    if !command.no_witness {
+    let witness_status = if command.no_witness {
+        WitnessStatus::Disabled
+    } else {
         let elapsed = start.elapsed();
         let inputs: Vec<String> = command
             .artifacts
@@ -134,7 +153,14 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
 
         witness::ledger::append(&record)
             .map_err(|e| AssessError::Witness(format!("failed to append witness: {e}")))?;
-    }
+        WitnessStatus::Written
+    };
+
+    let stdout = output::render_with_context(
+        &output::AssessResult::Decision(assess_output),
+        command.render_mode,
+        RenderContext::with_witness_status(witness_status),
+    );
 
     Ok(Execution::new(exit, stdout))
 }
@@ -163,4 +189,12 @@ fn execute_witness(invocation: cli::WitnessInvocation) -> Result<Execution, Asse
         exit_code: output.exit_code,
         stdout: with_trailing_newline(&output.stdout),
     })
+}
+
+fn refusal_witness_status(no_witness: bool) -> WitnessStatus {
+    if no_witness {
+        WitnessStatus::Disabled
+    } else {
+        WitnessStatus::NotWritten
+    }
 }

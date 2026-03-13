@@ -46,6 +46,24 @@ Use a policy ID to resolve from the search path:
   --json
 ```
 
+Scan outcomes without opening the full JSON artifact:
+
+```bash
+./target/release/assess \
+  fixtures/artifacts/shape_compatible.json \
+  fixtures/artifacts/rvl_real_change.json \
+  fixtures/artifacts/verify_pass.json \
+  --policy-id loan_tape.monthly.v1 \
+  --render summary
+
+./target/release/assess \
+  fixtures/artifacts/shape_compatible.json \
+  fixtures/artifacts/rvl_real_change.json \
+  fixtures/artifacts/verify_pass.json \
+  --policy-id loan_tape.monthly.v1 \
+  --render summary-tsv
+```
+
 Inspect metadata:
 
 ```bash
@@ -71,6 +89,15 @@ Query the local witness log:
 | `0` | `PROCEED` |
 | `1` | `PROCEED_WITH_RISK` or `ESCALATE` |
 | `2` | `BLOCK`, refusal, or CLI error |
+
+---
+
+## Output Modes
+
+- default: compact human-readable decision or refusal report
+- `--json`: canonical `assess.v0` JSON artifact or structured refusal envelope
+- `--render summary`: one-line operator summary with decision/refusal, matched rule, risk code, tools, witness state, and refusal code
+- `--render summary-tsv`: stable header + row TSV summary for shell pipelines
 
 ---
 
@@ -192,7 +219,7 @@ When assess cannot produce a valid decision, it emits a structured refusal envel
 | `src/policy/` | Policy loading, validation, schema types |
 | `src/bundle/` | Artifact loading, basis derivation |
 | `src/evaluate/` | Rule matching and decision orchestration |
-| `src/output/` | Deterministic JSON and human rendering |
+| `src/output/` | Deterministic JSON, human, summary, and TSV rendering |
 | `src/refusal/` | Refusal codes and envelope model |
 | `src/witness/` | Local witness ledger, record schema, query surface |
 | `schemas/` | Embedded JSON schemas (`assess.v0`, `policy.v0`) |

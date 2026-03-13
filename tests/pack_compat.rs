@@ -87,6 +87,7 @@ fn refusal_json_output_still_matches_pack_artifact_detection()
         "fixtures/policies/loan_tape_monthly_v1.yaml",
         "--policy-id",
         "loan_tape.monthly.v1",
+        "--json",
     ]))?;
 
     assert_eq!(execution.exit_code, 2);

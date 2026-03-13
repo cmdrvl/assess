@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use assess::cli::{AssessExit, Cli, PolicySelector, Route, WitnessInvocationCommand, route};
+use assess::output::RenderMode;
 use assess::policy::DecisionBand;
 use assess::{ASSESS_SCHEMA_JSON, execute};
 use clap::{Parser, error::ErrorKind};
@@ -43,6 +44,7 @@ fn ambiguous_policy_selector_returns_refusal_json() -> Result<(), Box<dyn std::e
         "fixtures/policies/loan_tape_monthly_v1.yaml",
         "--policy-id",
         "loan_tape.monthly.v1",
+        "--json",
     ]))?;
 
     assert_eq!(execution.exit_code, 2);
@@ -77,7 +79,7 @@ fn successful_routes_preserve_run_and_witness_shape() -> Result<(), Box<dyn std:
         Route::Run(assess::cli::RunCommand {
             artifacts: vec![PathBuf::from("fixtures/artifacts/shape_clean.json")],
             policy_selector: PolicySelector::Id("loan_tape.monthly.v1".to_owned()),
-            json: false,
+            render_mode: RenderMode::Human,
             no_witness: false,
         })
     );
@@ -102,6 +104,61 @@ fn successful_routes_preserve_run_and_witness_shape() -> Result<(), Box<dyn std:
     );
 
     Ok(())
+}
+
+#[test]
+fn render_modes_route_and_conflicts_stay_explicit() {
+    let summary_route = route(Cli::parse_from([
+        "assess",
+        "fixtures/artifacts/shape_clean.json",
+        "--policy-id",
+        "loan_tape.monthly.v1",
+        "--render",
+        "summary",
+    ]))
+    .expect("summary route should parse");
+
+    assert_eq!(
+        summary_route,
+        Route::Run(assess::cli::RunCommand {
+            artifacts: vec![PathBuf::from("fixtures/artifacts/shape_clean.json")],
+            policy_selector: PolicySelector::Id("loan_tape.monthly.v1".to_owned()),
+            render_mode: RenderMode::Summary,
+            no_witness: false,
+        })
+    );
+
+    let conflict = Cli::try_parse_from([
+        "assess",
+        "fixtures/artifacts/shape_clean.json",
+        "--policy-id",
+        "loan_tape.monthly.v1",
+        "--json",
+        "--render",
+        "summary",
+    ])
+    .expect_err("json and render should conflict");
+    assert_eq!(conflict.kind(), ErrorKind::ArgumentConflict);
+}
+
+#[test]
+fn witness_subcommand_rejects_run_render_modes() {
+    let err = route(Cli::parse_from([
+        "assess", "--render", "summary", "witness", "last",
+    ]))
+    .expect_err("witness route should reject render mode");
+
+    match err {
+        assess::cli::RouteError::Usage(error) => {
+            assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
+            assert!(
+                error
+                    .to_string()
+                    .contains("`--render` is not supported with `assess witness`")
+            );
+        }
+        other => panic!("expected usage error, got {other:?}"),
+    }
 }
 
 #[test]

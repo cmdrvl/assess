@@ -62,6 +62,50 @@ pub enum AssessResult {
     Refusal(RefusalEnvelope),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderMode {
+    Human,
+    Json,
+    Summary,
+    SummaryTsv,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WitnessStatus {
+    Written,
+    Disabled,
+    NotWritten,
+}
+
+impl WitnessStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Written => "written",
+            Self::Disabled => "disabled",
+            Self::NotWritten => "not_written",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderContext {
+    pub witness_status: WitnessStatus,
+}
+
+impl Default for RenderContext {
+    fn default() -> Self {
+        Self {
+            witness_status: WitnessStatus::NotWritten,
+        }
+    }
+}
+
+impl RenderContext {
+    pub fn with_witness_status(witness_status: WitnessStatus) -> Self {
+        Self { witness_status }
+    }
+}
+
 /// Build a full `AssessOutput` from a decision, the artifact bundle, and the loaded policy.
 pub fn build_output(
     decision: &Decision,
@@ -103,22 +147,26 @@ pub fn build_output(
 }
 
 /// Render an `AssessResult` for output.
-pub fn render(result: &AssessResult, json_output: bool) -> String {
-    match result {
-        AssessResult::Decision(output) => {
-            if json_output {
-                json::render_output(output)
-            } else {
-                human::render_output(output)
-            }
-        }
-        AssessResult::Refusal(envelope) => {
-            if json_output {
-                json::render_refusal(envelope)
-            } else {
-                human::render_refusal(envelope)
-            }
-        }
+pub fn render(result: &AssessResult, render_mode: RenderMode) -> String {
+    render_with_context(result, render_mode, RenderContext::default())
+}
+
+pub fn render_with_context(
+    result: &AssessResult,
+    render_mode: RenderMode,
+    context: RenderContext,
+) -> String {
+    match render_mode {
+        RenderMode::Json => match result {
+            AssessResult::Decision(output) => json::render_output(output),
+            AssessResult::Refusal(envelope) => json::render_refusal(envelope),
+        },
+        RenderMode::Human => match result {
+            AssessResult::Decision(output) => human::render_output(output),
+            AssessResult::Refusal(envelope) => human::render_refusal(envelope),
+        },
+        RenderMode::Summary => human::render_summary(result, context),
+        RenderMode::SummaryTsv => human::render_summary_tsv(result, context),
     }
 }
 

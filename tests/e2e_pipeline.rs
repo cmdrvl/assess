@@ -143,6 +143,49 @@ fn full_pipeline_proceed_human() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[test]
+fn full_pipeline_proceed_summary() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = unique_dir("proceed-summary");
+
+    let shape = write_artifact(
+        &dir,
+        "shape.json",
+        &json!({"tool": "shape", "version": "shape.report.v1", "outcome": "COMPATIBLE"}),
+    );
+    let rvl = write_artifact(
+        &dir,
+        "rvl.json",
+        &json!({"tool": "rvl", "version": "rvl.report.v1", "outcome": "REAL_CHANGE"}),
+    );
+    let verify = write_artifact(
+        &dir,
+        "verify.json",
+        &json!({"tool": "verify", "version": "verify.report.v1", "outcome": "PASS"}),
+    );
+
+    let cli = Cli::parse_from([
+        "assess",
+        shape.to_str().unwrap(),
+        rvl.to_str().unwrap(),
+        verify.to_str().unwrap(),
+        "--policy-id",
+        "loan_tape.monthly.v1",
+        "--render",
+        "summary",
+        "--no-witness",
+    ]);
+
+    let execution = execute(cli)?;
+    assert_eq!(execution.exit_code, 0);
+    assert_eq!(
+        execution.stdout.trim(),
+        "tool=assess version=assess.v0 outcome=DECISION decision=PROCEED matched_rule=clean_reconciliation risk_code=- required_tools=shape,rvl,verify observed_tools=shape,rvl,verify witness=disabled refusal_code=-"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // BLOCK path (exit 2)
 // ---------------------------------------------------------------------------
@@ -387,6 +430,28 @@ fn ambiguous_policy_refusal() {
 
     let parsed: Value = serde_json::from_str(execution.stdout.trim()).unwrap();
     assert_eq!(parsed["refusal"]["code"], "E_AMBIGUOUS_POLICY");
+}
+
+#[test]
+fn ambiguous_policy_refusal_respects_summary_render_mode() {
+    let cli = Cli::parse_from([
+        "assess",
+        "/dev/null",
+        "--policy",
+        "some.yaml",
+        "--policy-id",
+        "some.id",
+        "--render",
+        "summary-tsv",
+        "--no-witness",
+    ]);
+
+    let execution = execute(cli).unwrap();
+    assert_eq!(execution.exit_code, 2);
+    assert_eq!(
+        execution.stdout.trim(),
+        "tool\tversion\toutcome\tdecision\tmatched_rule\trisk_code\trequired_tools\tobserved_tools\twitness\trefusal_code\nassess\tassess.v0\tREFUSAL\t-\t-\t-\t-\t-\tdisabled\tE_AMBIGUOUS_POLICY"
+    );
 }
 
 // ---------------------------------------------------------------------------

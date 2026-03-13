@@ -23,7 +23,7 @@ What `assess` owns:
 - policy loading, validation, and content-addressed hashing
 - epistemic-basis completeness checks
 - ordered rule matching (first match wins, exact equality only)
-- deterministic decision output (JSON and human modes)
+- deterministic decision output (JSON, human, summary, TSV summary)
 - structured refusal envelopes for unsafe or incomplete invocations
 - local witness receipt logging and query surface
 
@@ -84,6 +84,21 @@ cargo run -- \
   fixtures/artifacts/verify_pass.json \
   --policy fixtures/policies/loan_tape_monthly_v1.yaml \
   --json
+
+# Operator summary surfaces
+cargo run -- \
+  fixtures/artifacts/shape_compatible.json \
+  fixtures/artifacts/rvl_real_change.json \
+  fixtures/artifacts/verify_pass.json \
+  --policy-id loan_tape.monthly.v1 \
+  --render summary
+
+cargo run -- \
+  fixtures/artifacts/shape_compatible.json \
+  fixtures/artifacts/rvl_real_change.json \
+  fixtures/artifacts/verify_pass.json \
+  --policy-id loan_tape.monthly.v1 \
+  --render summary-tsv
 ```
 
 ---
@@ -118,9 +133,9 @@ Do not revive stale `compare` ideas or ad hoc policy logic. `assess` is a narrow
 | `src/bundle/mod.rs` | ArtifactBundle construction and BundleError |
 | `src/evaluate/matcher.rs` | Rule matching: WhenClause against ArtifactBundle |
 | `src/evaluate/mod.rs` | Decision orchestration, requires check, EvalError |
-| `src/output/mod.rs` | AssessOutput, AssessResult, build_output, render dispatch |
+| `src/output/mod.rs` | AssessOutput, AssessResult, render modes/context, render dispatch |
 | `src/output/json.rs` | Deterministic JSON rendering |
-| `src/output/human.rs` | Human-readable rendering |
+| `src/output/human.rs` | Human-readable, summary, and TSV summary rendering |
 | `src/refusal/codes.rs` | RefusalCode enum (7 codes) |
 | `src/refusal/payload.rs` | RefusalEnvelope model |
 | `src/witness/record.rs` | WitnessRecord with builder pattern |
@@ -236,7 +251,7 @@ Named test suites (14 suites, 147+ tests):
 | `bundle_construct` | Artifact bundle construction and basis derivation |
 | `evaluate_rules` | Rule matching against bundles |
 | `refusal_suite` | Refusal envelope completeness |
-| `output_schema` | JSON schema validation, golden file comparison, human output |
+| `output_schema` | JSON schema validation, golden file comparison, human output, summary surfaces |
 | `witness_suite` | Witness record, ledger, and query surface |
 | `e2e_pipeline` | Full pipeline integration (all bands + refusals) |
 | `determinism` | Byte-exact determinism proof across all bands and refusals |

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use assess::bundle;
 use assess::evaluate;
-use assess::output::{self, AssessOutput, AssessResult};
+use assess::output::{self, AssessOutput, AssessResult, RenderContext, RenderMode, WitnessStatus};
 use assess::policy;
 use assess::refusal::{RefusalCode, RefusalEnvelope};
 use assess::{ASSESS_SCHEMA_JSON, POLICY_SCHEMA_JSON};
@@ -66,7 +66,7 @@ fn proceed_output_matches_golden_and_schema() -> Result<(), Box<dyn std::error::
         "fixtures/artifacts/rvl_real_change.json",
         "fixtures/artifacts/verify_pass.json",
     ]);
-    let rendered = output::render(&AssessResult::Decision(output.clone()), true);
+    let rendered = output::render(&AssessResult::Decision(output.clone()), RenderMode::Json);
     let parsed: Value = serde_json::from_str(&rendered)?;
     validate(&parsed).map_err(std::io::Error::other)?;
 
@@ -85,7 +85,7 @@ fn proceed_with_risk_output_matches_golden_and_schema() -> Result<(), Box<dyn st
         "fixtures/artifacts/rvl_no_real_change.json",
         "fixtures/artifacts/verify_pass.json",
     ]);
-    let rendered = output::render(&AssessResult::Decision(output.clone()), true);
+    let rendered = output::render(&AssessResult::Decision(output.clone()), RenderMode::Json);
     let parsed: Value = serde_json::from_str(&rendered)?;
     validate(&parsed).map_err(std::io::Error::other)?;
 
@@ -104,7 +104,7 @@ fn escalate_output_matches_golden_and_schema() -> Result<(), Box<dyn std::error:
         "fixtures/artifacts/rvl_refusal_diffuse.json",
         "fixtures/artifacts/verify_pass.json",
     ]);
-    let rendered = output::render(&AssessResult::Decision(output.clone()), true);
+    let rendered = output::render(&AssessResult::Decision(output.clone()), RenderMode::Json);
     let parsed: Value = serde_json::from_str(&rendered)?;
     validate(&parsed).map_err(std::io::Error::other)?;
 
@@ -123,7 +123,7 @@ fn block_output_matches_golden_and_schema() -> Result<(), Box<dyn std::error::Er
         "fixtures/artifacts/rvl_refusal_missingness_tolerable.json",
         "fixtures/artifacts/verify_pass.json",
     ]);
-    let rendered = output::render(&AssessResult::Decision(output.clone()), true);
+    let rendered = output::render(&AssessResult::Decision(output.clone()), RenderMode::Json);
     let parsed: Value = serde_json::from_str(&rendered)?;
     validate(&parsed).map_err(std::io::Error::other)?;
 
@@ -142,7 +142,7 @@ fn human_output_shows_band_risk_and_basis_summary() {
         "fixtures/artifacts/rvl_refusal_diffuse.json",
         "fixtures/artifacts/verify_pass.json",
     ]);
-    let rendered = output::render(&AssessResult::Decision(output), false);
+    let rendered = output::render(&AssessResult::Decision(output), RenderMode::Human);
 
     support::assert_human_lines(
         &rendered,
@@ -160,13 +160,13 @@ fn human_output_shows_band_risk_and_basis_summary() {
 #[test]
 fn refusal_rendering_stays_structured_in_both_modes() -> Result<(), Box<dyn std::error::Error>> {
     let envelope = RefusalEnvelope::new(RefusalCode::MissingRule, "no rule matched");
-    let json_rendered = output::render(&AssessResult::Refusal(envelope.clone()), true);
+    let json_rendered = output::render(&AssessResult::Refusal(envelope.clone()), RenderMode::Json);
     let json_value: Value = serde_json::from_str(&json_rendered)?;
 
     assert_eq!(json_value["refusal"]["code"], "E_MISSING_RULE");
     validate(&json_value).map_err(std::io::Error::other)?;
 
-    let human_rendered = output::render(&AssessResult::Refusal(envelope), false);
+    let human_rendered = output::render(&AssessResult::Refusal(envelope), RenderMode::Human);
     support::assert_human_lines(
         &human_rendered,
         &[
@@ -179,6 +179,40 @@ fn refusal_rendering_stays_structured_in_both_modes() -> Result<(), Box<dyn std:
 }
 
 #[test]
+fn compact_summary_render_includes_decision_and_witness_state() {
+    let output = build_output(&[
+        "fixtures/artifacts/shape_compatible.json",
+        "fixtures/artifacts/rvl_refusal_diffuse.json",
+        "fixtures/artifacts/verify_pass.json",
+    ]);
+    let rendered = output::render_with_context(
+        &AssessResult::Decision(output),
+        RenderMode::Summary,
+        RenderContext::with_witness_status(WitnessStatus::Written),
+    );
+
+    assert_eq!(
+        rendered,
+        "tool=assess version=assess.v0 outcome=DECISION decision=ESCALATE matched_rule=diffuse_requires_review risk_code=DIFFUSE_CHANGE required_tools=shape,rvl,verify observed_tools=shape,rvl,verify witness=written refusal_code=-"
+    );
+}
+
+#[test]
+fn tsv_summary_render_includes_refusal_code() {
+    let envelope = RefusalEnvelope::new(RefusalCode::MissingRule, "no rule matched");
+    let rendered = output::render_with_context(
+        &AssessResult::Refusal(envelope),
+        RenderMode::SummaryTsv,
+        RenderContext::with_witness_status(WitnessStatus::NotWritten),
+    );
+
+    assert_eq!(
+        rendered,
+        "tool\tversion\toutcome\tdecision\tmatched_rule\trisk_code\trequired_tools\tobserved_tools\twitness\trefusal_code\nassess\tassess.v0\tREFUSAL\t-\t-\t-\t-\t-\tnot_written\tE_MISSING_RULE"
+    );
+}
+
+#[test]
 fn json_output_is_byte_stable_across_repeated_renders() {
     let output = build_output(&[
         "fixtures/artifacts/shape_compatible.json",
@@ -186,7 +220,7 @@ fn json_output_is_byte_stable_across_repeated_renders() {
         "fixtures/artifacts/verify_pass.json",
     ]);
     let result = AssessResult::Decision(output);
-    let first = output::render(&result, true);
-    let second = output::render(&result, true);
+    let first = output::render(&result, RenderMode::Json);
+    let second = output::render(&result, RenderMode::Json);
     assert_eq!(first, second);
 }
