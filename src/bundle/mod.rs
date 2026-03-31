@@ -7,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde_json::{Value, json};
 use thiserror::Error;
 
 use crate::refusal::RefusalCode;
@@ -37,6 +38,10 @@ impl ArtifactBundle {
 pub enum BundleError {
     #[error("invalid artifact {path}: {message}")]
     BadArtifact { path: String, message: String },
+    #[error(
+        "invalid artifact {path}: assess expects verify.report.v1 evidence, not compiled constraints {version}"
+    )]
+    VerifyConstraintsArtifact { path: String, version: String },
     #[error("duplicate canonical tool `{tool}` for artifacts {first} and {second}")]
     DuplicateTool {
         tool: String,
@@ -48,8 +53,31 @@ pub enum BundleError {
 impl BundleError {
     pub const fn refusal_code(&self) -> RefusalCode {
         match self {
-            Self::BadArtifact { .. } => RefusalCode::BadArtifact,
+            Self::BadArtifact { .. } | Self::VerifyConstraintsArtifact { .. } => {
+                RefusalCode::BadArtifact
+            }
             Self::DuplicateTool { .. } => RefusalCode::DuplicateTool,
+        }
+    }
+
+    pub fn refusal_detail(&self) -> Option<Value> {
+        match self {
+            Self::VerifyConstraintsArtifact { path, version } => Some(json!({
+                "artifact": path,
+                "received_version": version,
+                "expected_version": "verify.report.v1",
+            })),
+            _ => None,
+        }
+    }
+
+    pub fn refusal_next_command(&self) -> Option<String> {
+        match self {
+            Self::VerifyConstraintsArtifact { path, .. } => Some(format!(
+                "verify run {} --bind <NAME=PATH> --json > verify.report.json && assess <ARTIFACT>... verify.report.json --policy <PATH>",
+                shell_quote(path)
+            )),
+            _ => None,
         }
     }
 }
@@ -110,6 +138,13 @@ fn load_one(path: &Path) -> Result<LoadedArtifact, BundleError> {
             message: format!("failed to parse artifact JSON: {error}"),
         })?;
 
+    if is_verify_constraints_version(&report.version) {
+        return Err(BundleError::VerifyConstraintsArtifact {
+            path: path.display().to_string(),
+            version: report.version,
+        });
+    }
+
     let canonical_tool = derive::canonical_tool(report.tool.as_deref(), &report.version)
         .ok_or_else(|| BundleError::BadArtifact {
             path: path.display().to_string(),
@@ -123,4 +158,14 @@ fn load_one(path: &Path) -> Result<LoadedArtifact, BundleError> {
         canonical_tool,
         report,
     })
+}
+
+fn is_verify_constraints_version(version: &str) -> bool {
+    version
+        .strip_prefix("verify.constraint.v")
+        .is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }

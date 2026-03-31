@@ -111,7 +111,13 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
     let artifact_bundle = match bundle::load(&command.artifacts) {
         Ok(b) => b,
         Err(error) => {
-            let refusal = RefusalEnvelope::new(error.refusal_code(), error.to_string());
+            let mut refusal = RefusalEnvelope::new(error.refusal_code(), error.to_string());
+            if let Some(detail) = error.refusal_detail() {
+                refusal = refusal.with_detail(detail);
+            }
+            if let Some(next_command) = error.refusal_next_command() {
+                refusal = refusal.with_next_command(next_command);
+            }
             let stdout = output::render_with_context(
                 &output::AssessResult::Refusal(refusal.clone()),
                 command.render_mode,

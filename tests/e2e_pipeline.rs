@@ -413,6 +413,78 @@ fn bad_artifact_refusal() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn compiled_verify_constraints_refusal_guides_verify_then_assess()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = unique_dir("verify-constraints");
+
+    let constraints = write_artifact(
+        &dir,
+        "constraints.verify.json",
+        &json!({
+            "version": "verify.constraint.v1",
+            "constraint_set_id": "example.not_null",
+            "bindings": [
+                {
+                    "name": "input",
+                    "kind": "relation",
+                    "key_fields": ["loan_id"]
+                }
+            ],
+            "rules": [
+                {
+                    "id": "INPUT_LOAN_ID_PRESENT",
+                    "severity": "error",
+                    "portability": "portable",
+                    "check": {
+                        "op": "not_null",
+                        "binding": "input",
+                        "columns": ["loan_id"]
+                    }
+                }
+            ]
+        }),
+    );
+
+    let cli = Cli::parse_from([
+        "assess",
+        constraints.to_str().unwrap(),
+        "--policy-id",
+        "default.v0",
+        "--json",
+        "--no-witness",
+    ]);
+
+    let execution = execute(cli)?;
+    assert_eq!(execution.exit_code, 2);
+
+    let parsed: Value = serde_json::from_str(execution.stdout.trim())?;
+    assert_eq!(parsed["refusal"]["code"], "E_BAD_ARTIFACT");
+    assert_eq!(
+        parsed["refusal"]["detail"]["received_version"],
+        "verify.constraint.v1"
+    );
+    assert_eq!(
+        parsed["refusal"]["detail"]["expected_version"],
+        "verify.report.v1"
+    );
+
+    let next_command = parsed["refusal"]["next_command"]
+        .as_str()
+        .expect("next_command should be a string");
+    let verify_index = next_command
+        .find("verify run")
+        .expect("next_command should mention verify run");
+    let assess_index = next_command
+        .find("assess ")
+        .expect("next_command should mention assess");
+    assert!(verify_index < assess_index);
+    assert!(next_command.contains("constraints.verify.json"));
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
 fn ambiguous_policy_refusal() {
     let cli = Cli::parse_from([
         "assess",

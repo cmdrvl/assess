@@ -115,3 +115,61 @@ fn load_rejects_bad_artifacts() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(error.refusal_code().as_str(), "E_BAD_ARTIFACT");
     Ok(())
 }
+
+#[test]
+fn load_rejects_compiled_verify_constraints_with_specific_guidance()
+-> Result<(), Box<dyn std::error::Error>> {
+    let workspace = support::TempWorkspace::new("bundle-verify-constraints")?;
+    let constraints = workspace.write_json(
+        "constraints.verify.json",
+        &json!({
+            "version": "verify.constraint.v1",
+            "constraint_set_id": "example.not_null",
+            "bindings": [
+                {
+                    "name": "input",
+                    "kind": "relation",
+                    "key_fields": ["loan_id"]
+                }
+            ],
+            "rules": [
+                {
+                    "id": "INPUT_LOAN_ID_PRESENT",
+                    "severity": "error",
+                    "portability": "portable",
+                    "check": {
+                        "op": "not_null",
+                        "binding": "input",
+                        "columns": ["loan_id"]
+                    }
+                }
+            ]
+        }),
+    )?;
+
+    let error = load(std::slice::from_ref(&constraints))
+        .expect_err("compiled constraints should not be accepted as assess evidence");
+    assert!(matches!(
+        error,
+        BundleError::VerifyConstraintsArtifact { ref path, ref version }
+            if path == &constraints.display().to_string() && version == "verify.constraint.v1"
+    ));
+    assert_eq!(error.refusal_code().as_str(), "E_BAD_ARTIFACT");
+    assert_eq!(
+        error.refusal_detail(),
+        Some(json!({
+            "artifact": constraints.display().to_string(),
+            "received_version": "verify.constraint.v1",
+            "expected_version": "verify.report.v1",
+        }))
+    );
+
+    let next_command = error
+        .refusal_next_command()
+        .expect("compiled constraints should surface a next command");
+    assert!(next_command.starts_with("verify run "));
+    assert!(next_command.contains("constraints.verify.json"));
+    assert!(next_command.contains("&& assess "));
+
+    Ok(())
+}
