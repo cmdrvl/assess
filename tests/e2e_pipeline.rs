@@ -105,6 +105,41 @@ fn full_pipeline_proceed_json() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn article_claims_verifier_bundle_proceeds_json() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse_from([
+        "assess",
+        "fixtures/artifacts/benchmark_claims_high.json",
+        "fixtures/artifacts/article_verify_pass.json",
+        "fixtures/artifacts/decoding_claims_converged.json",
+        "--policy",
+        "fixtures/policies/claims_verifier_graam_v1.yaml",
+        "--json",
+        "--no-witness",
+    ]);
+
+    let execution = execute(cli)?;
+    assert_eq!(execution.exit_code, 0);
+
+    let parsed: Value = serde_json::from_str(execution.stdout.trim())?;
+    assert_eq!(parsed["decision_band"], "PROCEED");
+    assert_eq!(parsed["matched_rule"], "clean_proceed");
+    assert_eq!(
+        parsed["required_tools"],
+        json!(["benchmark", "article_verify", "decoding"])
+    );
+    assert_eq!(
+        parsed["observed_tools"],
+        json!(["benchmark", "article_verify", "decoding"])
+    );
+    assert_eq!(
+        parsed["epistemic_basis"][1]["tool"],
+        json!("article_verify")
+    );
+    assert_eq!(parsed["epistemic_basis"][2]["version"], "decoding.spine.v0");
+    Ok(())
+}
+
+#[test]
 fn full_pipeline_proceed_human() -> Result<(), Box<dyn std::error::Error>> {
     let dir = unique_dir("proceed-human");
 

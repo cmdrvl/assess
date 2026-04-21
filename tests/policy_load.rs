@@ -6,10 +6,14 @@ use assess::policy::{DecisionBand, PolicyFile};
 fn policy_fixtures_exist() -> Result<(), Box<dyn std::error::Error>> {
     let policy =
         std::fs::read_to_string(support::fixture_path("policies/loan_tape_monthly_v1.yaml"))?;
+    let claims_policy = std::fs::read_to_string(support::fixture_path(
+        "policies/claims_verifier_graam_v1.yaml",
+    ))?;
     let minimal =
         std::fs::read_to_string(support::fixture_path("policies/minimal_default_only.yaml"))?;
 
     assert!(policy.contains("policy_id: loan_tape.monthly.v1"));
+    assert!(claims_policy.contains("policy_id: claims_verifier.graam.v1"));
     assert!(minimal.contains("default: true"));
     Ok(())
 }
@@ -24,6 +28,24 @@ fn loan_tape_policy_deserializes_from_yaml() -> Result<(), Box<dyn std::error::E
     assert_eq!(policy.policy_version, 1);
     assert_eq!(policy.requires, vec!["shape", "rvl", "verify"]);
     assert_eq!(policy.rules.len(), 6);
+    Ok(())
+}
+
+#[test]
+fn claims_verifier_policy_deserializes_from_yaml() -> Result<(), Box<dyn std::error::Error>> {
+    let raw = std::fs::read_to_string(support::policy_path("claims_verifier_graam_v1.yaml"))?;
+    let policy: PolicyFile = serde_yaml::from_str(&raw)?;
+
+    assert_eq!(policy.schema_version, 1);
+    assert_eq!(policy.policy_id, "claims_verifier.graam.v1");
+    assert_eq!(policy.policy_version, 1);
+    assert_eq!(
+        policy.requires,
+        vec!["benchmark", "article_verify", "decoding"]
+    );
+    assert_eq!(policy.rules.len(), 7);
+    assert_eq!(policy.rules[5].name, "clean_proceed");
+    assert_eq!(policy.rules[5].then.decision_band, DecisionBand::Proceed);
     Ok(())
 }
 

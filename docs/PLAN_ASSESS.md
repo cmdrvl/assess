@@ -291,6 +291,10 @@ To keep `assess` narrow without losing useful nuance, tools that currently expos
 - `rvl.policy_signals.missingness_band`: `TOLERABLE | SEVERE` (only when `refusal.code = E_MISSINGNESS`)
 - `verify.policy_signals.severity_band`: `CLEAN | WARN_ONLY | ERROR_PRESENT`
 - `benchmark.policy_signals.quality_band`: `HIGH | ACCEPTABLE | LOW`
+- `article_verify.policy_signals.severity_band`: `CLEAN | WARN_ONLY | ERROR_PRESENT`
+- `decoding.policy_signals.resolution_band`: `FULL | PARTIAL | DISPUTED`
+- `decoding.policy_signals.coverage_band`: `COMPLETE | PARTIAL`
+- `decoding.policy_signals.single_source_band`: `NONE | LIMITED | HEAVY`
 
 This keeps the line clean:
 - the producing tool owns the raw metrics and how they collapse into a stable band
@@ -354,12 +358,14 @@ V0 resolution rule:
 Examples:
 
 - `{ "tool": "verify", "version": "verify.report.v1" }` → `verify`
+- `{ "tool": "decoding", "version": "decoding.spine.v0" }` → `decoding`
 - `{ "version": "benchmark.v0" }` → `benchmark`
 - `{ "version": "shape.v0" }` → `shape`
 
 This keeps `assess` compatible with both:
 
 - newer explicit-tool reports like `verify.report.v1`
+- non-standard spine reports like `article_verify.v0` and `decoding.spine.v0`
 - legacy reports that only expose `version`
 
 `version` remains required even when `tool` is present. The explicit `tool`
@@ -445,6 +451,11 @@ assess rvl.json --policy default.v0 > decision.json
 assess shape.json rvl.json verify.json --policy loan_tape.monthly.v1 > decision.json
 pack seal shape.json rvl.json verify.json decision.json nov.lock.json dec.lock.json \
   --note "Nov→Dec recon with decision" --output evidence/2025-12/
+
+# Article claims verifier bundle
+assess benchmark.report.json article_verify.report.json decoding.spine.report.json \
+  --policy fixtures/policies/claims_verifier_graam_v1.yaml \
+  > decision.json
 ```
 
 ---
@@ -511,8 +522,12 @@ assess/
 └── fixtures/
     ├── policies/
     │   ├── loan_tape_monthly_v1.yaml
+    │   ├── claims_verifier_graam_v1.yaml
     │   └── minimal_default_only.yaml
     ├── artifacts/
+    │   ├── article_verify_pass.json
+    │   ├── benchmark_claims_high.json
+    │   ├── decoding_claims_converged.json
     │   ├── shape_compatible.json
     │   ├── shape_incompatible_partial.json
     │   ├── rvl_real_change.json

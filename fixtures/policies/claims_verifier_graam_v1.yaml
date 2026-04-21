@@ -1,0 +1,75 @@
+schema_version: 1
+policy_id: claims_verifier.graam.v1
+policy_version: 1
+description: Claims verifier policy for the Graam loan sale structuring POC
+requires:
+  - benchmark
+  - article_verify
+  - decoding
+rules:
+  - name: low_benchmark_quality_blocks
+    when:
+      benchmark:
+        signals:
+          quality_band: LOW
+    then:
+      decision_band: BLOCK
+      risk_code: LOW_EXTRACTION_QUALITY
+
+  - name: internal_consistency_requires_review
+    when:
+      article_verify:
+        outcome: FAIL
+    then:
+      decision_band: ESCALATE
+      risk_code: INTERNAL_INCONSISTENCY
+
+  - name: decode_conflicts_require_review
+    when:
+      decoding:
+        outcome: DISPUTED
+    then:
+      decision_band: ESCALATE
+      risk_code: CLAIM_CONFLICTS
+
+  - name: partial_resolution_with_high_benchmark
+    when:
+      benchmark:
+        signals:
+          quality_band: HIGH
+      article_verify:
+        outcome: PASS
+      decoding:
+        outcome: PARTIAL
+    then:
+      decision_band: PROCEED_WITH_RISK
+      risk_code: SINGLE_SOURCE_CLAIMS
+
+  - name: benchmark_skip_only_with_clean_verification
+    when:
+      benchmark:
+        signals:
+          quality_band: ACCEPTABLE
+      article_verify:
+        outcome: PASS
+    then:
+      decision_band: PROCEED_WITH_RISK
+      risk_code: INCOMPLETE_EXTRACTION
+
+  - name: clean_proceed
+    when:
+      benchmark:
+        signals:
+          quality_band: HIGH
+      article_verify:
+        outcome: PASS
+      decoding:
+        outcome: CONVERGED
+    then:
+      decision_band: PROCEED
+
+  - name: default_block
+    default: true
+    then:
+      decision_band: BLOCK
+      risk_code: UNHANDLED_CONDITION

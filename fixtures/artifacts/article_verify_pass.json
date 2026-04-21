@@ -1,0 +1,32 @@
+{
+  "tool": "article_verify",
+  "version": "article_verify.v0",
+  "outcome": "PASS",
+  "policy_signals": {
+    "severity_band": "CLEAN"
+  },
+  "summary": {
+    "by_severity": {
+      "error": 0,
+      "warn": 0
+    },
+    "failed_rules": 0,
+    "passed_rules": 9,
+    "total_rules": 9
+  },
+  "results": [
+    {
+      "detail": "computed reserve percent=5.00% expected=5.00",
+      "rule_id": "RESERVE_PERCENT_MATCHES_BALANCE",
+      "severity": "error",
+      "status": "pass"
+    },
+    {
+      "detail": "computed note stack=95000000 expected=95000000",
+      "rule_id": "NOTE_STACK_TOTAL_MATCHES_COMPONENTS",
+      "severity": "error",
+      "status": "pass"
+    }
+  ],
+  "refusal": null
+}

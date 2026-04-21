@@ -64,6 +64,22 @@ Scan outcomes without opening the full JSON artifact:
   --render summary-tsv
 ```
 
+Run the article claims-verifier example bundle:
+
+```bash
+./target/release/assess \
+  fixtures/artifacts/benchmark_claims_high.json \
+  fixtures/artifacts/article_verify_pass.json \
+  fixtures/artifacts/decoding_claims_converged.json \
+  --policy fixtures/policies/claims_verifier_graam_v1.yaml \
+  --json
+```
+
+This fixture shows the non-standard tool path used by `cmdrvl-cli`
+claims-verifier. `article_verify.v0` and `decoding.spine.v0` both set explicit
+top-level `tool` values so policy rules can match the canonical identities
+`article_verify` and `decoding`.
+
 Inspect metadata:
 
 ```bash
@@ -226,6 +242,12 @@ When assess cannot produce a valid decision, it emits a structured refusal envel
 | `rules/` | Golden-rule enforcement artifacts |
 | `fixtures/` | Policy, artifact, and golden-output fixtures |
 | `tests/` | 14 named test suites, 147+ tests |
+
+The fixture set includes both the canonical loan-tape bundle and the
+claims-verifier bundle. The latter demonstrates that `assess` can classify
+spine-compatible reports from upstream tools outside the original
+`shape`/`rvl`/`verify` trio when those reports expose `version`,
+`policy_signals`, and an explicit canonical `tool`.
 
 ---
 

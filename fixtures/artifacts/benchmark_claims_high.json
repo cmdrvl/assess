@@ -1,0 +1,14 @@
+{
+  "tool": "benchmark",
+  "version": "benchmark.v0",
+  "outcome": "PASS",
+  "policy_signals": {
+    "quality_band": "HIGH"
+  },
+  "summary": {
+    "accuracy": 1.0,
+    "assertions": 12,
+    "failed": 0,
+    "passed": 12
+  }
+}

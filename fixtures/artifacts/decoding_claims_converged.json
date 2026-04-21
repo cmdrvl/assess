@@ -1,0 +1,21 @@
+{
+  "tool": "decoding",
+  "version": "decoding.spine.v0",
+  "outcome": "CONVERGED",
+  "policy_signals": {
+    "coverage_band": "COMPLETE",
+    "resolution_band": "FULL",
+    "single_source_band": "NONE"
+  },
+  "summary": {
+    "canon_count": 12,
+    "converged_count": 12,
+    "converging_count": 0,
+    "coverage": 1.0,
+    "escalation_count": 0,
+    "single_source_count": 0,
+    "total_slots": 12
+  },
+  "top_escalations": [],
+  "refusal": null
+}
