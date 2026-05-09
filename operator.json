@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "assess",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Deterministic decision classification over a complete spine evidence bundle",
   "repository": "https://github.com/cmdrvl/assess",
   "invocation": {
@@ -9,6 +9,7 @@
     "usage": [
       "assess <ARTIFACT>... --policy <POLICY> [OPTIONS]",
       "assess <ARTIFACT>... --policy-id <ID> [OPTIONS]",
+      "assess doctor [health|capabilities|robot-docs|--robot-triage] [--json]",
       "assess witness <query|last|count> [OPTIONS]"
     ],
     "output_mode": "report",
@@ -89,6 +90,37 @@
       "current_runtime_behavior": {
         "status": "implemented",
         "error_exit_code": 2
+      }
+    },
+    {
+      "name": "doctor",
+      "usage": "assess doctor [health|capabilities|robot-docs|--robot-triage] [--json]",
+      "description": "Read-only health, capabilities, and robot-oriented diagnostics for the compiled assess operator contract",
+      "output_mode": "mixed",
+      "output_schema": "assess.doctor.health.v1 | assess.doctor.capabilities.v1 | assess.doctor.triage.v1 | text/plain",
+      "status": "implemented",
+      "read_only": true,
+      "fixers": [],
+      "exit_codes": {
+        "0": { "meaning": "doctor report emitted successfully", "domain": "positive" },
+        "1": { "meaning": "reserved for future unhealthy read-only findings", "domain": "negative" },
+        "2": { "meaning": "CLI usage error or refusal", "domain": "error" }
+      },
+      "options": [
+        { "name": "json", "flag": "--json", "type": "flag", "description": "Emit JSON for health or capabilities reports" },
+        { "name": "robot_triage", "flag": "--robot-triage", "type": "flag", "description": "Emit compact assess.doctor.triage.v1 JSON" }
+      ],
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_artifact_files": false,
+        "reads_policy_files": false,
+        "validates_policy": false,
+        "constructs_bundle": false,
+        "evaluates_rules": false,
+        "queries_witness_ledger": false,
+        "appends_witness_ledger": false,
+        "writes_doctor_artifacts": false,
+        "uses_network": false
       }
     }
   ],

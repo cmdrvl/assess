@@ -15,8 +15,13 @@ set -eu
 #
 # Optional scope override:
 #   ./scripts/ubs_gate.sh .
+#
+# Optional scanner override:
+#   UBS_BIN=/path/to/ubs ./scripts/ubs_gate.sh
 
-if ! command -v ubs >/dev/null 2>&1; then
+ubs_bin="${UBS_BIN:-ubs}"
+
+if ! command -v "$ubs_bin" >/dev/null 2>&1; then
   if [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then
     echo "UBS not installed in CI; failing UBS gate." >&2
     exit 2
@@ -74,7 +79,7 @@ if [ -n "$ignore_file_tmp" ]; then
 fi
 
 set +e
-ubs --ci --only=rust $ubs_ignore_args "$@" --report-json "$report_tmp" >"$log_file" 2>&1
+"$ubs_bin" --ci --only=rust $ubs_ignore_args "$@" --report-json "$report_tmp" >"$log_file" 2>&1
 ubs_exit=$?
 set -e
 

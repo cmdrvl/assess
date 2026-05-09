@@ -10,8 +10,8 @@ use crate::output::{RenderMode, WitnessStatus};
 use crate::refusal::{RefusalCode, RefusalEnvelope};
 
 pub use args::{
-    Cli, Command, RunRenderMode, WitnessArgs, WitnessCommand, WitnessCount, WitnessLast,
-    WitnessQuery,
+    Cli, Command, DoctorArgs, DoctorCommand, RunRenderMode, WitnessArgs, WitnessCommand,
+    WitnessCount, WitnessLast, WitnessQuery,
 };
 pub use exit::AssessExit;
 
@@ -20,6 +20,7 @@ pub enum Route {
     Describe,
     Schema,
     Version,
+    Doctor(DoctorInvocation),
     Run(RunCommand),
     Witness(WitnessInvocation),
 }
@@ -36,6 +37,20 @@ pub struct RunCommand {
 pub enum PolicySelector {
     Path(String),
     Id(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DoctorInvocation {
+    pub command: DoctorInvocationCommand,
+    pub json: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DoctorInvocationCommand {
+    Health,
+    Capabilities,
+    RobotDocs,
+    RobotTriage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,11 +103,60 @@ pub fn route(cli: Cli) -> Result<Route, RouteError> {
     }
 
     match command {
+        Some(Command::Doctor(doctor)) => route_doctor(
+            artifacts, policy, policy_id, no_witness, json, render, doctor,
+        ),
         Some(Command::Witness(witness)) => route_witness(
             artifacts, policy, policy_id, no_witness, json, render, witness,
         ),
         None => route_run(artifacts, policy, policy_id, json, render, no_witness),
     }
+}
+
+fn route_doctor(
+    artifacts: Vec<PathBuf>,
+    policy: Option<String>,
+    policy_id: Option<String>,
+    no_witness: bool,
+    json: bool,
+    render: Option<RunRenderMode>,
+    doctor: DoctorArgs,
+) -> Result<Route, RouteError> {
+    if !artifacts.is_empty() {
+        return Err(RouteError::Usage(Box::new(argument_conflict(
+            "artifact arguments are not accepted with `assess doctor`",
+        ))));
+    }
+
+    if policy.is_some() || policy_id.is_some() {
+        return Err(RouteError::Usage(Box::new(argument_conflict(
+            "policy selectors are not accepted with `assess doctor`",
+        ))));
+    }
+
+    if no_witness {
+        return Err(RouteError::Usage(Box::new(argument_conflict(
+            "`--no-witness` cannot be used with `assess doctor`",
+        ))));
+    }
+
+    if render.is_some() {
+        return Err(RouteError::Usage(Box::new(argument_conflict(
+            "`--render` is not supported with `assess doctor`",
+        ))));
+    }
+
+    let command = if doctor.robot_triage {
+        DoctorInvocationCommand::RobotTriage
+    } else {
+        match doctor.command.unwrap_or(DoctorCommand::Health) {
+            DoctorCommand::Health => DoctorInvocationCommand::Health,
+            DoctorCommand::Capabilities => DoctorInvocationCommand::Capabilities,
+            DoctorCommand::RobotDocs => DoctorInvocationCommand::RobotDocs,
+        }
+    };
+
+    Ok(Route::Doctor(DoctorInvocation { command, json }))
 }
 
 fn route_run(

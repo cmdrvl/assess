@@ -2,6 +2,7 @@
 
 pub mod bundle;
 pub mod cli;
+pub mod doctor;
 pub mod evaluate;
 pub mod output;
 pub mod policy;
@@ -66,6 +67,7 @@ pub fn execute(cli: Cli) -> Result<Execution, AssessError> {
             AssessExit::Proceed,
             format!("assess {}", env!("CARGO_PKG_VERSION")),
         )),
+        Ok(Route::Doctor(invocation)) => Ok(doctor::execute(invocation)),
         Ok(Route::Witness(invocation)) => execute_witness(invocation),
         Ok(Route::Run(command)) => execute_run(command),
         Err(RouteError::Usage(error)) => Err(AssessError::Usage(*error)),

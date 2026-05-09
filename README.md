@@ -86,6 +86,10 @@ Inspect metadata:
 ./target/release/assess --describe
 ./target/release/assess --schema
 ./target/release/assess --version
+./target/release/assess doctor health --json
+./target/release/assess doctor capabilities --json
+./target/release/assess doctor robot-docs
+./target/release/assess doctor --robot-triage
 ```
 
 Query the local witness log:
@@ -95,6 +99,18 @@ Query the local witness log:
 ./target/release/assess witness query --json
 ./target/release/assess witness count --json
 ```
+
+Run read-only doctor diagnostics for agent automation:
+
+```bash
+./target/release/assess doctor health --json
+./target/release/assess doctor capabilities --json
+./target/release/assess doctor --robot-triage
+```
+
+`assess doctor` does not read artifacts or policy files, construct bundles,
+evaluate rules, query or append witness ledgers, write `.doctor/` artifacts, or
+contact providers. `assess doctor --fix` is intentionally unsupported.
 
 ---
 

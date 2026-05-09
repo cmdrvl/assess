@@ -29,3 +29,6 @@ target
 
 # Local UBS gate report
 .ubs-gate-summary.json
+
+# Doctor mode run artifacts (future write-capable doctor passes only)
+.doctor/

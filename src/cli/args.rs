@@ -59,7 +59,25 @@ pub struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
+    Doctor(DoctorArgs),
     Witness(WitnessArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct DoctorArgs {
+    #[arg(long = "robot-triage")]
+    pub robot_triage: bool,
+
+    #[command(subcommand)]
+    pub command: Option<DoctorCommand>,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DoctorCommand {
+    Health,
+    Capabilities,
+    #[command(name = "robot-docs")]
+    RobotDocs,
 }
 
 #[derive(Debug, Clone, Args)]
