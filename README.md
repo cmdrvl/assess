@@ -1,5 +1,9 @@
 # assess
 
+![assess: deterministic decision classification. A painterly dashboard showing a complete evidence bundle (delivery.lock, shape.report, rvl.report, fingerprint.catalog, verify.report, canon.mapping) being mapped through a visible policy.yaml file onto a four-band verdict strip. Three bands (PROCEED, ESCALATE, BLOCK) are dimmed; one (PROCEED_WITH_RISK) is lit and chosen. A reason chain below names the rule, the matched evidence, the observed value, and the decision. A WHAT ASSESS DOES NOT DO panel forbids interpretation, policy adjustment, guessing, and override. A triage tag hanging by a string carries four color-coded stickers, with the chosen band peeled off and attached to a delivery folder.](docs/images/assess.webp)
+
+> *Given this policy and this bundle, here's the action.*
+
 **Deterministic decision classification over a spine evidence bundle.**
 
 `assess` is the epistemic spine tool that turns a complete set of upstream evidence artifacts into one declared decision:
@@ -293,3 +297,7 @@ cargo test
 ## Release
 
 Releases are cut automatically via `.github/workflows/release.yml` when `Cargo.toml` version changes on `main`. The workflow builds cross-platform binaries (5 targets), generates SHA256SUMS with cosign signing, SBOM, and SLSA provenance, and publishes to GitHub Releases and the Homebrew tap.
+
+---
+
+*`assess` is part of the open-source toolchain from the [CMD+RVL](https://cmdrvl.com) lineage and AI enablement practice. MIT-licensed. Contributions welcome from any practice or stack.*
