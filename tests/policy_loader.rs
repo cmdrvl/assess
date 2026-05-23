@@ -67,9 +67,9 @@ rules:
 fn user_policy_dir_is_checked_after_builtins() -> Result<(), Box<dyn std::error::Error>> {
     let workspace = support::TempWorkspace::new("policy-loader-home")?;
     let home_dir = workspace.child("home");
-    std::fs::create_dir_all(home_dir.join(".epistemic").join("policies"))?;
+    std::fs::create_dir_all(home_dir.join(".cmdrvl/config/assess/policies"))?;
     workspace.write(
-        "home/.epistemic/policies/custom.yaml",
+        "home/.cmdrvl/config/assess/policies/custom.yaml",
         r#"schema_version: 1
 policy_id: custom.policy.v1
 policy_version: 3

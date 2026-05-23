@@ -139,7 +139,7 @@ Do not revive stale `compare` ideas or ad hoc policy logic. `assess` is a narrow
 | `src/refusal/codes.rs` | RefusalCode enum (7 codes) |
 | `src/refusal/payload.rs` | RefusalEnvelope model |
 | `src/witness/record.rs` | WitnessRecord with builder pattern |
-| `src/witness/ledger.rs` | Append-only JSONL ledger at ~/.epistemic/witness.jsonl |
+| `src/witness/ledger.rs` | Append-only JSONL ledger at `~/.cmdrvl/state/witness/witness.jsonl` unless `EPISTEMIC_WITNESS` is set |
 | `src/witness/query.rs` | Witness query/last/count modes |
 | `schemas/*.json` | Embedded JSON schemas (assess.v0, policy.v0) |
 | `rules/*.yml` | Golden-rule enforcement artifacts (ast-grep) |
@@ -160,6 +160,17 @@ Critical structural rules:
 ---
 
 ## Core Invariants (Do Not Break)
+
+### 0. Config footprint is self-contained
+
+Implicit assess-managed paths live under `~/.cmdrvl`: user policies in
+`~/.cmdrvl/config/assess/policies/` and witness receipts in
+`~/.cmdrvl/state/witness/witness.jsonl`.
+
+`ASSESS_POLICY_PATH` and `EPISTEMIC_WITNESS` remain explicit operator
+overrides. First-run migration from `~/.epistemic/policies/` and
+`~/.epistemic/witness.jsonl` is copy-only, leaves legacy files in place, and
+records only path metadata.
 
 ### 1. Determinism is constitutional
 

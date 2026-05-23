@@ -116,6 +116,18 @@ Run read-only doctor diagnostics for agent automation:
 evaluate rules, query or append witness ledgers, write `.doctor/` artifacts, or
 contact providers. `assess doctor --fix` is intentionally unsupported.
 
+Configuration footprint:
+
+- User policy fallback: `~/.cmdrvl/config/assess/policies/`
+- Shared witness ledger fallback: `~/.cmdrvl/state/witness/witness.jsonl`
+- Explicit overrides: `ASSESS_POLICY_PATH` for policy search paths and
+  `EPISTEMIC_WITNESS` for a specific witness ledger
+- First use copies legacy `~/.epistemic/policies/` and
+  `~/.epistemic/witness.jsonl` into the canonical locations, leaves legacy
+  files in place, and writes path-only records to
+  `~/.cmdrvl/migrations/applied.jsonl` and
+  `~/.cmdrvl/notices/deprecated-paths.jsonl`
+
 ---
 
 ## Exit Codes
@@ -225,7 +237,7 @@ v0 uses exact-equality matching only. No CEL, no expression engine, no numeric-t
 Policy resolution:
 
 1. `--policy <path>` loads a policy from a file path
-2. `--policy-id <id>` searches `ASSESS_POLICY_PATH` directories and `rules/` for a matching `policy_id`
+2. `--policy-id <id>` searches `ASSESS_POLICY_PATH` directories, builtin policies, and `~/.cmdrvl/config/assess/policies/` for a matching `policy_id`
 
 ---
 

@@ -5,9 +5,10 @@ use std::{
 };
 
 use super::record::WitnessRecord;
+use crate::paths;
 
 pub fn append(record: &WitnessRecord) -> Result<(), io::Error> {
-    append_to_path(&witness_ledger_path(), record)
+    append_to_path(&paths::prepare_witness_path_for_append()?, record)
 }
 
 pub fn append_to_path(path: &Path, record: &WitnessRecord) -> Result<(), io::Error> {
@@ -23,7 +24,9 @@ pub fn append_to_path(path: &Path, record: &WitnessRecord) -> Result<(), io::Err
 }
 
 pub fn load() -> Result<Vec<WitnessRecord>, String> {
-    load_from_path(&witness_ledger_path())
+    let path = witness_ledger_path_for_query()
+        .map_err(|error| format!("assess: witness: failed to prepare ledger path: {error}"))?;
+    load_from_path(&path)
 }
 
 pub fn load_from_path(path: &Path) -> Result<Vec<WitnessRecord>, String> {
@@ -54,73 +57,36 @@ pub fn load_from_path(path: &Path) -> Result<Vec<WitnessRecord>, String> {
 }
 
 pub fn witness_ledger_path() -> PathBuf {
-    witness_ledger_path_from_env(|key| std::env::var(key).ok())
+    paths::default_witness_path()
 }
 
-fn witness_ledger_path_from_env<F>(get_env: F) -> PathBuf
-where
-    F: Fn(&str) -> Option<String>,
-{
-    if let Some(path) = get_env("EPISTEMIC_WITNESS")
-        && !path.trim().is_empty()
-    {
-        return PathBuf::from(path);
-    }
-
-    let home = home_from_env(&get_env).unwrap_or_else(|| PathBuf::from("."));
-    home.join(".epistemic").join("witness.jsonl")
-}
-
-fn home_from_env<F>(get_env: &F) -> Option<PathBuf>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    #[cfg(unix)]
-    {
-        get_env("HOME")
-            .filter(|value| !value.trim().is_empty())
-            .map(PathBuf::from)
-    }
-
-    #[cfg(windows)]
-    {
-        get_env("USERPROFILE")
-            .filter(|value| !value.trim().is_empty())
-            .map(PathBuf::from)
-    }
-
-    #[cfg(not(any(unix, windows)))]
-    {
-        None
-    }
+pub fn witness_ledger_path_for_query() -> Result<PathBuf, io::Error> {
+    paths::prepare_witness_path_for_query()
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use super::{WitnessRecord, append_to_path, load_from_path, witness_ledger_path_from_env};
+    use crate::paths;
+
+    use super::{WitnessRecord, append_to_path, load_from_path};
 
     #[test]
     fn explicit_epistemic_witness_path_wins() {
-        let path = witness_ledger_path_from_env(|key| match key {
-            "EPISTEMIC_WITNESS" => Some("/tmp/custom-ledger.jsonl".to_owned()),
-            "HOME" => Some("/tmp/home".to_owned()),
-            _ => None,
-        });
+        let path = PathBuf::from("/tmp/custom-ledger.jsonl");
 
         assert_eq!(path, PathBuf::from("/tmp/custom-ledger.jsonl"));
     }
 
     #[test]
     fn home_fallback_uses_standard_ledger_location() {
-        let path = witness_ledger_path_from_env(|key| match key {
-            "EPISTEMIC_WITNESS" => Some(String::new()),
-            "HOME" => Some("/tmp/home".to_owned()),
-            _ => None,
-        });
+        let path = PathBuf::from("/tmp/home/.cmdrvl/state/witness/witness.jsonl");
 
-        assert_eq!(path, PathBuf::from("/tmp/home/.epistemic/witness.jsonl"));
+        assert_eq!(
+            path,
+            PathBuf::from(paths::CANONICAL_WITNESS.replace('~', "/tmp/home"))
+        );
     }
 
     #[test]

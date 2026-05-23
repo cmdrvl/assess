@@ -42,7 +42,9 @@ impl WitnessCommandOutput {
 }
 
 pub fn render_query(filters: &[String], json_output: bool) -> Result<WitnessCommandOutput, String> {
-    render_query_from_path(&ledger::witness_ledger_path(), filters, json_output)
+    let path = ledger::witness_ledger_path_for_query()
+        .map_err(|error| format!("assess: witness: failed to prepare ledger path: {error}"))?;
+    render_query_from_path(&path, filters, json_output)
 }
 
 pub fn render_query_from_path(
@@ -80,7 +82,9 @@ pub fn render_query_from_path(
 }
 
 pub fn render_last(json_output: bool) -> Result<WitnessCommandOutput, String> {
-    render_last_from_path(&ledger::witness_ledger_path(), json_output)
+    let path = ledger::witness_ledger_path_for_query()
+        .map_err(|error| format!("assess: witness: failed to prepare ledger path: {error}"))?;
+    render_last_from_path(&path, json_output)
 }
 
 pub fn render_last_from_path(
@@ -107,7 +111,9 @@ pub fn render_last_from_path(
 }
 
 pub fn render_count(filters: &[String], json_output: bool) -> Result<WitnessCommandOutput, String> {
-    render_count_from_path(&ledger::witness_ledger_path(), filters, json_output)
+    let path = ledger::witness_ledger_path_for_query()
+        .map_err(|error| format!("assess: witness: failed to prepare ledger path: {error}"))?;
+    render_count_from_path(&path, filters, json_output)
 }
 
 pub fn render_count_from_path(

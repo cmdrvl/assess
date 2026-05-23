@@ -19,6 +19,7 @@ fn assert_doctor_side_effects_absent(dir: &Path, witness_path: &Path) {
     }
     assert!(!dir.join(".doctor").exists());
     assert!(!dir.join(".epistemic").exists());
+    assert!(!dir.join(".cmdrvl").exists());
 }
 
 fn missing_json_field(name: &str) -> io::Error {
@@ -78,6 +79,16 @@ fn doctor_health_json_is_read_only() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(payload["side_effects"]["opens_witness_ledger"], false);
     assert_eq!(payload["side_effects"]["appends_witness_ledger"], false);
     assert_eq!(payload["side_effects"]["creates_witness_directory"], false);
+    assert_eq!(payload["side_effects"]["writes_migration_logs"], false);
+    assert_eq!(payload["side_effects"]["writes_deprecation_notices"], false);
+    assert_eq!(
+        payload["config_footprint"]["managed_config_paths"][0],
+        "~/.cmdrvl/config/assess/policies/"
+    );
+    assert_eq!(
+        payload["config_footprint"]["managed_state_paths"][0],
+        "~/.cmdrvl/state/witness/witness.jsonl"
+    );
     assert_all_side_effects_false(side_effects(&payload)?)?;
     assert!(payload["fixers"].as_array().is_some_and(Vec::is_empty));
     assert_doctor_side_effects_absent(workspace.path(), &witness_path);
@@ -98,6 +109,7 @@ fn doctor_capabilities_json_has_no_fixers_or_side_effects() -> Result<(), Box<dy
     assert_eq!(payload["schema"], "assess.doctor.capabilities.v1");
     assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
     assert_eq!(payload["read_only"], true);
+    assert_eq!(payload["config_footprint"]["self_contained"], true);
     assert_all_side_effects_false(side_effects(&payload)?)?;
     assert!(payload["fixers"].as_array().is_some_and(Vec::is_empty));
     assert!(
@@ -130,6 +142,10 @@ fn doctor_robot_triage_json_is_machine_readable() -> Result<(), Box<dyn std::err
     assert_eq!(payload["ok"], true);
     assert_eq!(payload["score"], 100);
     assert_eq!(payload["read_only"], true);
+    assert_eq!(
+        payload["config_footprint"]["deprecation_notices"],
+        "~/.cmdrvl/notices/deprecated-paths.jsonl"
+    );
     assert_all_side_effects_false(side_effects(&payload)?)?;
     assert_doctor_side_effects_absent(workspace.path(), &witness_path);
     Ok(())
@@ -148,6 +164,7 @@ fn doctor_robot_docs_is_plain_text_and_read_only() -> Result<(), Box<dyn std::er
     let stdout = String::from_utf8(output.stdout)?;
     assert!(stdout.contains("cmdrvl.read_only_doctor.v1"));
     assert!(stdout.contains("assess doctor health --json"));
+    assert!(stdout.contains("~/.cmdrvl/config/assess/policies"));
     assert!(stdout.contains("no --fix surface"));
     assert_doctor_side_effects_absent(workspace.path(), &witness_path);
     Ok(())

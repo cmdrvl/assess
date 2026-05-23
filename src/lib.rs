@@ -5,6 +5,7 @@ pub mod cli;
 pub mod doctor;
 pub mod evaluate;
 pub mod output;
+pub mod paths;
 pub mod policy;
 pub mod refusal;
 pub mod witness;

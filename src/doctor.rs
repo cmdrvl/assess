@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::{
     ASSESS_SCHEMA_JSON, Execution, OPERATOR_JSON, POLICY_SCHEMA_JSON,
     cli::{AssessExit, DoctorInvocation, DoctorInvocationCommand},
-    witness,
+    paths, witness,
 };
 
 const CONTRACT: &str = "cmdrvl.read_only_doctor.v1";
@@ -67,6 +67,7 @@ fn health_payload() -> Value {
         },
         "checks": checks,
         "observed_paths": observed_paths(),
+        "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
         "fixers": []
     })
@@ -110,6 +111,7 @@ fn capabilities_payload() -> Value {
             "1": "reserved for future unhealthy read-only findings",
             "2": "CLI usage error or refusal"
         },
+        "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
         "fixers": []
     })
@@ -132,6 +134,7 @@ fn triage_payload() -> Value {
         "score": if ok { 100 } else { 0 },
         "read_only": true,
         "checks": checks,
+        "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
         "fixers": [],
         "recommended_next_steps": [
@@ -208,6 +211,11 @@ fn health_checks() -> Vec<Value> {
             "doctor does not query or append the local witness ledger",
         ),
         check(
+            "config_footprint_declared",
+            true,
+            "implicit policy and witness paths are rooted under ~/.cmdrvl",
+        ),
+        check(
             "decision_pipeline_unentered",
             true,
             "doctor does not load policies, construct bundles, or evaluate rules",
@@ -234,6 +242,7 @@ fn observed_paths() -> Value {
         "operator_manifest": "embedded:operator.json",
         "assess_schema": "embedded:schemas/assess.v0.schema.json",
         "policy_schema": "embedded:schemas/policy.v0.schema.json",
+        "policy_dir": paths::canonical_policy_dir().display().to_string(),
         "witness_ledger": witness::ledger::witness_ledger_path().display().to_string()
     })
 }
@@ -252,6 +261,8 @@ fn side_effects() -> Value {
         "appends_witness_ledger": false,
         "creates_witness_directory": false,
         "writes_witness_ledger": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
         "writes_doctor_artifacts": false,
         "uses_network": false,
         "changes_cwd": false,
@@ -285,6 +296,7 @@ commands:\n\
 read_only:\n\
   - does not read stdin, artifacts, policies, schemas from disk, or witness ledgers\n\
   - does not construct bundles, evaluate policy rules, append witness records, create directories, or contact providers\n\
+  - implicit policy fallback is ~/.cmdrvl/config/assess/policies; implicit witness fallback is ~/.cmdrvl/state/witness/witness.jsonl\n\
 fix_mode:\n\
   - no --fix surface is implemented in this release\n\
 next_steps:\n\

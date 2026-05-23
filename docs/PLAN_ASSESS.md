@@ -125,7 +125,11 @@ assess witness count [FILTERS] [--json]
 
 1. `ASSESS_POLICY_PATH` env var (colon-separated directories)
 2. Built-in policies bundled with the binary
-3. `~/.epistemic/policies/` if present
+3. `~/.cmdrvl/config/assess/policies/` if present
+
+On first use, a legacy `~/.epistemic/policies/` directory is copied into the
+canonical policy directory when no canonical directory exists. The legacy
+directory is left in place.
 
 ### Exit codes
 
@@ -506,7 +510,7 @@ assess/
 │   │   └── payload.rs           — Refusal detail struct (code, trigger, next)
 │   └── witness/
 │       ├── mod.rs               — Witness ledger management (append, suppress)
-│       ├── ledger.rs            — JSONL append to ~/.epistemic/witness.jsonl
+│       ├── ledger.rs            — JSONL append to ~/.cmdrvl/state/witness/witness.jsonl
 │       ├── query.rs             — `assess witness` subcommand (query, last, count)
 │       └── record.rs            — Witness entry schema (tool="assess", inputs, decision, duration)
 ├── tests/
@@ -622,13 +626,13 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 |----|-------|---------------------|
 | C01 | Exit codes | PROCEED → 0, PROCEED_WITH_RISK → 1, ESCALATE → 1, BLOCK → 2, any refusal → 2 |
 | C02 | Refusal envelope | Every refusal produces valid JSON: `{ "tool": "assess", "version": "assess.v0", "decision_band": null, "refusal": { "code": "E_...", "message": "...", "detail": { ... }, "next_command": "..." } }` |
-| C03 | Policy loading | Policies resolve in order: `ASSESS_POLICY_PATH` → builtins → `~/.epistemic/policies/`. First match wins. |
+| C03 | Policy loading | Policies resolve in order: `ASSESS_POLICY_PATH` → builtins → `~/.cmdrvl/config/assess/policies/`. First match wins. |
 | C04 | Policy validation | Invalid policies produce `E_BAD_POLICY` with a diagnostic message identifying the specific violation |
 | C05 | Bundle construction | Canonical tool identity uses explicit top-level `tool` when present, otherwise version-derived fallback. Duplicates refused. Every artifact recorded in `epistemic_basis`. |
 | C06 | Rule matching | Rules evaluated in declaration order against the whole bundle. First rule whose `when` clause matches wins. Match surface: `outcome`, `outcome_in`, `refusal`, `signals` (exact equality only). |
 | C07 | Default rule | `default: true` always matches when reached. Must be last rule. If no rule matches and no default exists, refusal `E_MISSING_RULE`. |
 | C08 | Output schema | JSON output conforms to `assess.v0` schema. Top-level `tool` is always `assess`, and `matched_rule`, `required_tools`, `observed_tools`, `risk_factors`, `epistemic_basis` are all present. |
-| C09 | Witness | Every invocation appends a witness record to `~/.epistemic/witness.jsonl` unless `--no-witness`. Record includes: tool name, input paths, policy ID, decision band, duration. |
+| C09 | Witness | Every invocation appends a witness record to `~/.cmdrvl/state/witness/witness.jsonl` unless `--no-witness` or `EPISTEMIC_WITNESS` supplies an explicit path. Record includes: tool name, input paths, policy ID, decision band, duration. |
 | C10 | Pipeline compat | `assess` output is a valid member artifact for `pack seal`. The `version` field is `assess.v0`. |
 | C11 | Determinism | Identical inputs (same artifact bytes, same policy bytes) produce byte-identical output across runs, platforms, and Rust compiler versions. |
 | C12 | Policy hash | `policy.sha256` = SHA-256 of the policy file's raw bytes, hex-encoded with `sha256:` prefix. |

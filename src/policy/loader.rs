@@ -5,12 +5,14 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
+use crate::paths;
+
 use super::{PolicyError, PolicyFile, validate};
 
 pub const RESOLUTION_ORDER: [&str; 3] = [
     "ASSESS_POLICY_PATH",
     "builtin-policies",
-    "~/.epistemic/policies/",
+    "~/.cmdrvl/config/assess/policies/",
 ];
 
 const BUILTIN_POLICIES: [BuiltinPolicy; 2] = [
@@ -57,7 +59,7 @@ impl PolicySearchPaths {
         let env_paths = env::var_os("ASSESS_POLICY_PATH")
             .map(|paths| env::split_paths(&paths).collect())
             .unwrap_or_default();
-        let home_dir = env::var_os("HOME").map(PathBuf::from);
+        let home_dir = paths::home_dir_from_process();
 
         Self {
             env_paths,
@@ -68,7 +70,7 @@ impl PolicySearchPaths {
     pub fn user_policy_dir(&self) -> Option<PathBuf> {
         self.home_dir
             .as_ref()
-            .map(|home_dir| home_dir.join(".epistemic").join("policies"))
+            .map(|home_dir| paths::canonical_policy_dir_from_home(home_dir))
     }
 }
 
@@ -103,6 +105,10 @@ pub fn load_path(path: impl AsRef<Path>) -> Result<LoadedPolicy, PolicyError> {
 }
 
 pub fn load_policy_id(id: &str) -> Result<LoadedPolicy, PolicyError> {
+    paths::ensure_policy_dir_migrated().map_err(|source| PolicyError::Io {
+        path: paths::canonical_policy_dir(),
+        source,
+    })?;
     let search_paths = PolicySearchPaths::from_process();
     load_policy_id_with(id, &search_paths)
 }

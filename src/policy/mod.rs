@@ -35,7 +35,7 @@ pub enum PolicyError {
     SchemaViolation(String),
 
     #[error(
-        "policy `{id}` was not found in ASSESS_POLICY_PATH, builtin policies, or ~/.epistemic/policies"
+        "policy `{id}` was not found in ASSESS_POLICY_PATH, builtin policies, or ~/.cmdrvl/config/assess/policies"
     )]
     NotFound { id: String },
 
