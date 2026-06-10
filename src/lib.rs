@@ -62,6 +62,7 @@ pub enum AssessError {
 
 pub fn execute(cli: Cli) -> Result<Execution, AssessError> {
     match cli::route(cli) {
+        Ok(Route::Help) => Ok(Execution::new(AssessExit::Proceed, cli::long_help())),
         Ok(Route::Describe) => Ok(Execution::new(AssessExit::Proceed, OPERATOR_JSON)),
         Ok(Route::Schema) => Ok(Execution::new(AssessExit::Proceed, ASSESS_SCHEMA_JSON)),
         Ok(Route::Version) => Ok(Execution::new(

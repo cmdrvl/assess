@@ -1,0 +1,8 @@
+{"surface_id":"S-001","score_before":250,"score_after":850,"dimensions":["first_try_success","self_documentation"],"notes":"Bare invocation is now useful and exits 0."}
+{"surface_id":"S-002","score_before":200,"score_after":900,"dimensions":["mega_command","output_parseability"],"notes":"Top-level robot triage avoids remembering doctor namespace."}
+{"surface_id":"S-003","score_before":220,"score_after":900,"dimensions":["self_documentation","output_parseability"],"notes":"Top-level capabilities exposes full machine contract."}
+{"surface_id":"S-004","score_before":220,"score_after":860,"dimensions":["self_documentation"],"notes":"Top-level robot docs gives paste-ready guidance."}
+{"surface_id":"S-005","score_before":520,"score_after":780,"dimensions":["error_pedagogy","intent_inference"],"notes":"Typo path names --json and next command."}
+{"surface_id":"S-006","score_before":250,"score_after":880,"dimensions":["first_try_success","output_parseability"],"notes":"assess --json now returns capabilities when no run inputs exist."}
+{"surface_id":"S-007","score_before":620,"score_after":880,"dimensions":["self_documentation"],"notes":"Capabilities now covers run/witness/refusal/schema surfaces."}
+{"surface_id":"S-009","score_before":400,"score_after":820,"dimensions":["installability","release_hygiene"],"notes":"Generated Homebrew formula should pass strict audit."}

@@ -24,7 +24,34 @@ fn refusal_codes_serialize_to_protocol_labels() {
 #[test]
 fn refusal_codes_all_expose_next_command_guidance() {
     for code in RefusalCode::ALL {
-        assert_eq!(code.next_command(), "assess <ARTIFACT>... --policy <PATH>");
+        let next_command = code.next_command();
+        assert!(next_command.starts_with("assess "));
+        assert!(next_command.contains("--policy "));
+        assert!(next_command.ends_with(" --json"));
+    }
+
+    assert_eq!(
+        RefusalCode::DuplicateTool.next_command(),
+        "assess <ONE_ARTIFACT_PER_TOOL>... --policy <PATH> --json"
+    );
+    assert_eq!(
+        RefusalCode::IncompleteBasis.next_command(),
+        "assess <ALL_REQUIRED_ARTIFACTS>... --policy <PATH> --json"
+    );
+    assert_eq!(
+        RefusalCode::MissingRule.next_command(),
+        "assess <ARTIFACT>... --policy <PATH_WITH_DEFAULT_RULE> --json"
+    );
+    for code in [
+        RefusalCode::BadPolicy,
+        RefusalCode::AmbiguousPolicy,
+        RefusalCode::UnknownPolicy,
+        RefusalCode::BadArtifact,
+    ] {
+        assert_eq!(
+            code.next_command(),
+            "assess <ARTIFACT>... --policy <PATH> --json"
+        );
     }
 }
 
@@ -39,7 +66,7 @@ fn refusal_envelope_uses_assess_protocol_defaults() {
     assert_eq!(envelope.refusal.detail, json!({}));
     assert_eq!(
         envelope.refusal.next_command,
-        "assess <ARTIFACT>... --policy <PATH>"
+        "assess <ARTIFACT>... --policy <PATH> --json"
     );
 }
 

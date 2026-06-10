@@ -29,6 +29,9 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
         .collect::<Vec<_>>();
     assert!(usage.contains(&"assess <ARTIFACT>... --policy <POLICY> [OPTIONS]"));
     assert!(usage.contains(&"assess <ARTIFACT>... --policy-id <ID> [OPTIONS]"));
+    assert!(usage.contains(&"assess --robot-triage"));
+    assert!(usage.contains(&"assess capabilities --json"));
+    assert!(usage.contains(&"assess robot-docs guide"));
     assert!(usage.contains(&"assess witness <query|last|count> [OPTIONS]"));
 
     assert_eq!(operator["exit_codes"]["0"]["meaning"], "PROCEED");
@@ -84,12 +87,25 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
         operator["options"][3]["values"],
         serde_json::json!(["summary", "summary-tsv"])
     );
-    assert_eq!(operator["subcommands"][0]["name"], "witness");
-    assert_eq!(operator["subcommands"][0]["status"], "implemented");
-    assert_eq!(
-        operator["subcommands"][0]["current_runtime_behavior"]["status"],
-        "implemented"
-    );
+    let subcommands = operator["subcommands"]
+        .as_array()
+        .expect("operator subcommands should be an array");
+    let witness = subcommands
+        .iter()
+        .find(|entry| entry["name"] == "witness")
+        .expect("witness subcommand should be declared");
+    assert_eq!(witness["status"], "implemented");
+    assert_eq!(witness["current_runtime_behavior"]["status"], "implemented");
+    let capabilities = subcommands
+        .iter()
+        .find(|entry| entry["name"] == "capabilities")
+        .expect("top-level capabilities alias should be declared");
+    assert_eq!(capabilities["read_only"], true);
+    let robot_docs = subcommands
+        .iter()
+        .find(|entry| entry["name"] == "robot-docs")
+        .expect("top-level robot-docs alias should be declared");
+    assert_eq!(robot_docs["usage"], "assess robot-docs guide");
     assert_eq!(
         operator["notes"],
         serde_json::json!([

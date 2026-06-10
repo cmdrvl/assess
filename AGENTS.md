@@ -76,6 +76,9 @@ cargo run -- --help
 cargo run -- --describe
 cargo run -- --schema
 cargo run -- --version
+cargo run -- --robot-triage
+cargo run -- capabilities --json
+cargo run -- robot-docs guide
 
 # Full decision pipeline
 cargo run -- \
@@ -123,7 +126,7 @@ Do not revive stale `compare` ideas or ad hoc policy logic. `assess` is a narrow
 | `src/lib.rs` | Module tree and top-level execution surface |
 | `src/cli/args.rs` | Clap structs and command wiring |
 | `src/cli/exit.rs` | Exit-code model (0/1/2 trinity) |
-| `src/cli/mod.rs` | Route dispatch |
+| `src/cli/mod.rs` | Route dispatch, top-level introspection aliases, CLI error breadcrumbs |
 | `src/policy/schema.rs` | Policy data model (PolicyFile, Rule, WhenClause, ToolMatcher) |
 | `src/policy/loader.rs` | Policy resolution: file path and ID-based search |
 | `src/policy/validate.rs` | Policy structural validation |

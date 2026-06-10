@@ -21,6 +21,12 @@ It answers one narrow question:
 
 ## Quickstart
 
+Install with Homebrew:
+
+```bash
+brew install cmdrvl/tap/assess
+```
+
 Build from source:
 
 ```bash
@@ -90,6 +96,9 @@ Inspect metadata:
 ./target/release/assess --describe
 ./target/release/assess --schema
 ./target/release/assess --version
+./target/release/assess --robot-triage
+./target/release/assess capabilities --json
+./target/release/assess robot-docs guide
 ./target/release/assess doctor health --json
 ./target/release/assess doctor capabilities --json
 ./target/release/assess doctor robot-docs
@@ -107,6 +116,9 @@ Query the local witness log:
 Run read-only doctor diagnostics for agent automation:
 
 ```bash
+./target/release/assess --robot-triage
+./target/release/assess capabilities --json
+./target/release/assess robot-docs guide
 ./target/release/assess doctor health --json
 ./target/release/assess doctor capabilities --json
 ./target/release/assess doctor --robot-triage
@@ -115,6 +127,9 @@ Run read-only doctor diagnostics for agent automation:
 `assess doctor` does not read artifacts or policy files, construct bundles,
 evaluate rules, query or append witness ledgers, write `.doctor/` artifacts, or
 contact providers. `assess doctor --fix` is intentionally unsupported.
+The top-level agent entrypoints are read-only aliases over the same doctor
+contract; they exist so an agent can discover the CLI without remembering the
+doctor namespace first. Bare `assess` prints long help and exits 0.
 
 Configuration footprint:
 
@@ -144,6 +159,7 @@ Configuration footprint:
 
 - default: compact human-readable decision or refusal report
 - `--json`: canonical `assess.v0` JSON artifact or structured refusal envelope
+- `assess --json`: read-only capabilities JSON when no artifacts are supplied
 - `--render summary`: one-line operator summary with decision/refusal, matched rule, risk code, tools, witness state, and refusal code
 - `--render summary-tsv`: stable header + row TSV summary for shell pipelines
 

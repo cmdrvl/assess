@@ -10,13 +10,14 @@ use crate::output::{RenderMode, WitnessStatus};
 use crate::refusal::{RefusalCode, RefusalEnvelope};
 
 pub use args::{
-    Cli, Command, DoctorArgs, DoctorCommand, RunRenderMode, WitnessArgs, WitnessCommand,
-    WitnessCount, WitnessLast, WitnessQuery,
+    CapabilitiesArgs, Cli, Command, DoctorArgs, DoctorCommand, RobotDocsArgs, RobotDocsCommand,
+    RunRenderMode, WitnessArgs, WitnessCommand, WitnessCount, WitnessLast, WitnessQuery,
 };
 pub use exit::AssessExit;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
+    Help,
     Describe,
     Schema,
     Version,
@@ -87,6 +88,7 @@ pub fn route(cli: Cli) -> Result<Route, RouteError> {
         describe,
         schema,
         version,
+        robot_triage,
         command,
     } = cli;
 
@@ -102,7 +104,27 @@ pub fn route(cli: Cli) -> Result<Route, RouteError> {
         return Ok(Route::Version);
     }
 
+    if robot_triage {
+        reject_read_only_alias_args(&artifacts, &policy, &policy_id, no_witness, render)?;
+        return Ok(Route::Doctor(DoctorInvocation {
+            command: DoctorInvocationCommand::RobotTriage,
+            json: true,
+        }));
+    }
+
     match command {
+        Some(Command::Capabilities(capabilities)) => route_capabilities(
+            artifacts,
+            policy,
+            policy_id,
+            no_witness,
+            json,
+            render,
+            capabilities,
+        ),
+        Some(Command::RobotDocs(robot_docs)) => route_robot_docs(
+            artifacts, policy, policy_id, no_witness, json, render, robot_docs,
+        ),
         Some(Command::Doctor(doctor)) => route_doctor(
             artifacts, policy, policy_id, no_witness, json, render, doctor,
         ),
@@ -110,6 +132,74 @@ pub fn route(cli: Cli) -> Result<Route, RouteError> {
             artifacts, policy, policy_id, no_witness, json, render, witness,
         ),
         None => route_run(artifacts, policy, policy_id, json, render, no_witness),
+    }
+}
+
+fn reject_read_only_alias_args(
+    artifacts: &[PathBuf],
+    policy: &Option<String>,
+    policy_id: &Option<String>,
+    no_witness: bool,
+    render: Option<RunRenderMode>,
+) -> Result<(), RouteError> {
+    if !artifacts.is_empty() {
+        return Err(RouteError::Usage(Box::new(argument_conflict(
+            "artifact arguments are not accepted with read-only assess introspection commands",
+        ))));
+    }
+
+    if policy.is_some() || policy_id.is_some() {
+        return Err(RouteError::Usage(Box::new(argument_conflict(
+            "policy selectors are not accepted with read-only assess introspection commands",
+        ))));
+    }
+
+    if no_witness {
+        return Err(RouteError::Usage(Box::new(argument_conflict(
+            "`--no-witness` cannot be used with read-only assess introspection commands",
+        ))));
+    }
+
+    if render.is_some() {
+        return Err(RouteError::Usage(Box::new(argument_conflict(
+            "`--render` is not supported with read-only assess introspection commands",
+        ))));
+    }
+
+    Ok(())
+}
+
+fn route_capabilities(
+    artifacts: Vec<PathBuf>,
+    policy: Option<String>,
+    policy_id: Option<String>,
+    no_witness: bool,
+    json: bool,
+    render: Option<RunRenderMode>,
+    _capabilities: CapabilitiesArgs,
+) -> Result<Route, RouteError> {
+    reject_read_only_alias_args(&artifacts, &policy, &policy_id, no_witness, render)?;
+    Ok(Route::Doctor(DoctorInvocation {
+        command: DoctorInvocationCommand::Capabilities,
+        json,
+    }))
+}
+
+fn route_robot_docs(
+    artifacts: Vec<PathBuf>,
+    policy: Option<String>,
+    policy_id: Option<String>,
+    no_witness: bool,
+    json: bool,
+    render: Option<RunRenderMode>,
+    robot_docs: RobotDocsArgs,
+) -> Result<Route, RouteError> {
+    reject_read_only_alias_args(&artifacts, &policy, &policy_id, no_witness, render)?;
+    match robot_docs.command {
+        None | Some(RobotDocsCommand::Guide) => Ok(Route::Doctor(DoctorInvocation {
+            command: DoctorInvocationCommand::RobotDocs,
+            json,
+        })),
     }
 }
 
@@ -122,29 +212,7 @@ fn route_doctor(
     render: Option<RunRenderMode>,
     doctor: DoctorArgs,
 ) -> Result<Route, RouteError> {
-    if !artifacts.is_empty() {
-        return Err(RouteError::Usage(Box::new(argument_conflict(
-            "artifact arguments are not accepted with `assess doctor`",
-        ))));
-    }
-
-    if policy.is_some() || policy_id.is_some() {
-        return Err(RouteError::Usage(Box::new(argument_conflict(
-            "policy selectors are not accepted with `assess doctor`",
-        ))));
-    }
-
-    if no_witness {
-        return Err(RouteError::Usage(Box::new(argument_conflict(
-            "`--no-witness` cannot be used with `assess doctor`",
-        ))));
-    }
-
-    if render.is_some() {
-        return Err(RouteError::Usage(Box::new(argument_conflict(
-            "`--render` is not supported with `assess doctor`",
-        ))));
-    }
+    reject_read_only_alias_args(&artifacts, &policy, &policy_id, no_witness, render)?;
 
     let command = if doctor.robot_triage {
         DoctorInvocationCommand::RobotTriage
@@ -167,6 +235,29 @@ fn route_run(
     render: Option<RunRenderMode>,
     no_witness: bool,
 ) -> Result<Route, RouteError> {
+    if artifacts.is_empty() && policy.is_none() && policy_id.is_none() {
+        if no_witness {
+            return Err(RouteError::Usage(Box::new(argument_conflict(
+                "`--no-witness` requires an assess decision run",
+            ))));
+        }
+
+        if render.is_some() {
+            return Err(RouteError::Usage(Box::new(argument_conflict(
+                "`--render` requires an assess decision run",
+            ))));
+        }
+
+        if json {
+            return Ok(Route::Doctor(DoctorInvocation {
+                command: DoctorInvocationCommand::Capabilities,
+                json: true,
+            }));
+        }
+
+        return Ok(Route::Help);
+    }
+
     if artifacts.is_empty() {
         return Err(RouteError::Usage(Box::new(missing_required_argument(
             "the following required arguments were not provided:\n  <ARTIFACT>...",
@@ -261,6 +352,38 @@ fn missing_required_argument(message: &str) -> clap::Error {
 
 fn argument_conflict(message: &str) -> clap::Error {
     Cli::command().error(ErrorKind::ArgumentConflict, message)
+}
+
+pub fn long_help() -> String {
+    let mut command = Cli::command();
+    command.render_long_help().to_string()
+}
+
+pub fn format_cli_error(error: &clap::Error) -> String {
+    let mut rendered = error.to_string();
+    if !rendered.ends_with('\n') {
+        rendered.push('\n');
+    }
+
+    let rendered_lower = rendered.to_ascii_lowercase();
+    if rendered_lower.contains("--jsno")
+        || rendered_lower.contains("--jsson")
+        || rendered_lower.contains("--jason")
+        || rendered_lower.contains("--josn")
+    {
+        rendered.push_str("hint: did you mean `--json`?\nnext: assess capabilities --json\n");
+    } else {
+        match error.kind() {
+            ErrorKind::UnknownArgument
+            | ErrorKind::InvalidSubcommand
+            | ErrorKind::MissingRequiredArgument
+            | ErrorKind::ArgumentConflict => rendered
+                .push_str("next: assess capabilities --json\nhelp: assess robot-docs guide\n"),
+            _ => {}
+        }
+    }
+
+    rendered
 }
 
 fn render_mode(json: bool, render: Option<RunRenderMode>) -> RenderMode {

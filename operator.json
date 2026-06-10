@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "assess",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Deterministic decision classification over a complete spine evidence bundle",
   "repository": "https://github.com/cmdrvl/assess",
   "invocation": {
@@ -9,6 +9,9 @@
     "usage": [
       "assess <ARTIFACT>... --policy <POLICY> [OPTIONS]",
       "assess <ARTIFACT>... --policy-id <ID> [OPTIONS]",
+      "assess --robot-triage",
+      "assess capabilities --json",
+      "assess robot-docs guide",
       "assess doctor [health|capabilities|robot-docs|--robot-triage] [--json]",
       "assess witness <query|last|count> [OPTIONS]"
     ],
@@ -59,6 +62,12 @@
       "description": "Suppress witness ledger recording on successful assess runs"
     },
     {
+      "name": "robot_triage",
+      "flag": "--robot-triage",
+      "type": "flag",
+      "description": "Emit read-only machine triage JSON and exit 0 before normal validation"
+    },
+    {
       "name": "describe",
       "flag": "--describe",
       "type": "flag",
@@ -78,6 +87,24 @@
     }
   ],
   "subcommands": [
+    {
+      "name": "capabilities",
+      "usage": "assess capabilities --json",
+      "description": "Top-level read-only machine contract alias for agents",
+      "output_mode": "json",
+      "output_schema": "assess.doctor.capabilities.v1",
+      "status": "implemented",
+      "read_only": true
+    },
+    {
+      "name": "robot-docs",
+      "usage": "assess robot-docs guide",
+      "description": "Top-level read-only agent guide alias",
+      "output_mode": "text",
+      "output_schema": "text/plain",
+      "status": "implemented",
+      "read_only": true
+    },
     {
       "name": "witness",
       "description": "Local witness ledger query commands",

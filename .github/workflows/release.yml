@@ -323,7 +323,6 @@ jobs:
           import textwrap
 
           version = "${{ steps.version.outputs.version }}"
-          bare = "${{ steps.version.outputs.bare_version }}"
 
           sums = {}
           for line in pathlib.Path("SHA256SUMS").read_text().strip().splitlines():
@@ -347,7 +346,7 @@ jobs:
               if os_block != current_os:
                   if current_os is not None:
                       blocks.append("  end")
-                  blocks.append(f"\n  {os_block} do")
+                  blocks.append(f"  {os_block} do")
                   current_os = os_block
               blocks.append(f"    {arch_block} do")
               blocks.append(f'      url "https://github.com/cmdrvl/assess/releases/download/{version}/{asset}"')
@@ -362,7 +361,6 @@ jobs:
           class Assess < Formula
             desc "Deterministic decision classification over a spine evidence bundle"
             homepage "https://github.com/cmdrvl/assess"
-            version "{bare}"
             license "MIT"
           {"".join(chr(10) + l for l in blocks)}
 

@@ -1,0 +1,6 @@
+{"id":"R-001","title":"Make bare assess useful","status":"applied","surface_ids":["S-001"],"tests":["R-001__bare_invocation_entrypoints.test.sh"]}
+{"id":"R-002","title":"Add top-level robot triage","status":"applied","surface_ids":["S-002"],"tests":["R-002__top_level_robot_triage.test.sh"]}
+{"id":"R-003","title":"Add top-level capabilities alias","status":"applied","surface_ids":["S-003","S-006","S-007"],"tests":["R-003__capabilities_alias.test.sh"]}
+{"id":"R-004","title":"Add top-level robot docs alias","status":"applied","surface_ids":["S-004","S-008"],"tests":["R-004__robot_docs_guide.test.sh"]}
+{"id":"R-005","title":"Teach common JSON typo and next command","status":"applied","surface_ids":["S-005"],"tests":["R-005__error_breadcrumbs.test.sh"]}
+{"id":"R-006","title":"Fix generated Homebrew formula audit issues","status":"applied","surface_ids":["S-009"],"tests":["R-006__homebrew_formula_generator.test.sh"]}

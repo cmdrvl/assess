@@ -22,7 +22,7 @@ pub fn execute(invocation: DoctorInvocation) -> Execution {
         }
         DoctorInvocationCommand::Capabilities => Execution::new(
             AssessExit::Proceed,
-            "assess doctor capabilities\nread_only=true\nfixers=0\ncommands=health,capabilities,robot-docs,--robot-triage",
+            "assess capabilities\nread_only=true\nfixers=0\nagent_entrypoints=assess --robot-triage,assess capabilities --json,assess robot-docs guide",
         ),
         DoctorInvocationCommand::RobotDocs => {
             Execution::new(AssessExit::Proceed, robot_docs_text())
@@ -80,36 +80,153 @@ fn capabilities_payload() -> Value {
         "tool": "assess",
         "version": env!("CARGO_PKG_VERSION"),
         "read_only": true,
+        "agent_entrypoints": [
+            {
+                "name": "robot-triage",
+                "usage": "assess --robot-triage",
+                "output_schema": TRIAGE_SCHEMA,
+                "description": "Single-call read-only health, command, and next-step report"
+            },
+            {
+                "name": "capabilities",
+                "usage": "assess capabilities --json",
+                "output_schema": CAPABILITIES_SCHEMA,
+                "description": "Machine-readable CLI, refusal, side-effect, and schema contract"
+            },
+            {
+                "name": "robot-docs",
+                "usage": "assess robot-docs guide",
+                "output_schema": "text/plain",
+                "description": "Paste-ready agent guide for decision, witness, and doctor workflows"
+            }
+        ],
         "commands": [
             {
-                "name": "health",
+                "name": "run",
+                "usage": "assess <ARTIFACT>... --policy <PATH> --json",
+                "output_schema": "assess.v0",
+                "description": "Classify a complete evidence bundle against an explicit policy file"
+            },
+            {
+                "name": "run-by-policy-id",
+                "usage": "assess <ARTIFACT>... --policy-id <ID> --json",
+                "output_schema": "assess.v0",
+                "description": "Classify a bundle against a policy resolved from ASSESS_POLICY_PATH, builtins, or ~/.cmdrvl/config/assess/policies"
+            },
+            {
+                "name": "summary",
+                "usage": "assess <ARTIFACT>... --policy-id <ID> --render summary",
+                "output_schema": "text/plain",
+                "description": "Emit one-line operator summary for shell pipelines"
+            },
+            {
+                "name": "summary-tsv",
+                "usage": "assess <ARTIFACT>... --policy-id <ID> --render summary-tsv",
+                "output_schema": "text/tab-separated-values",
+                "description": "Emit stable header plus row TSV summary"
+            },
+            {
+                "name": "describe",
+                "usage": "assess --describe",
+                "output_schema": "operator.v0",
+                "description": "Emit embedded operator manifest before normal validation"
+            },
+            {
+                "name": "schema",
+                "usage": "assess --schema",
+                "output_schema": "json-schema",
+                "description": "Emit assess.v0 JSON Schema before normal validation"
+            },
+            {
+                "name": "version",
+                "usage": "assess --version",
+                "output_schema": "text/plain",
+                "description": "Emit compiled semantic version"
+            },
+            {
+                "name": "doctor-health",
                 "usage": "assess doctor health --json",
                 "output_schema": HEALTH_SCHEMA,
                 "description": "Report compiled manifest, embedded schema, and read-only contract health"
             },
             {
-                "name": "capabilities",
+                "name": "doctor-capabilities",
                 "usage": "assess doctor capabilities --json",
                 "output_schema": CAPABILITIES_SCHEMA,
                 "description": "Describe doctor commands, exit codes, side-effect boundaries, and disabled fixers"
             },
             {
-                "name": "robot-docs",
+                "name": "doctor-robot-docs",
                 "usage": "assess doctor robot-docs",
                 "output_schema": "text/plain",
                 "description": "Emit concise machine-oriented usage notes"
             },
             {
-                "name": "robot-triage",
+                "name": "doctor-robot-triage",
                 "usage": "assess doctor --robot-triage",
                 "output_schema": TRIAGE_SCHEMA,
                 "description": "Emit a compact triage report for automation"
+            },
+            {
+                "name": "witness-last",
+                "usage": "assess witness last --json",
+                "output_schema": "assess.witness.record.v1 | null",
+                "description": "Read the most recent local witness receipt"
+            },
+            {
+                "name": "witness-query",
+                "usage": "assess witness query policy=<ID> --json",
+                "output_schema": "array<assess.witness.record.v1>",
+                "description": "Filter local witness receipts by key=value filters"
+            },
+            {
+                "name": "witness-count",
+                "usage": "assess witness count policy=<ID> --json",
+                "output_schema": "count",
+                "description": "Count local witness receipts matching key=value filters"
             }
         ],
         "exit_codes": {
-            "0": "doctor report emitted successfully",
-            "1": "reserved for future unhealthy read-only findings",
-            "2": "CLI usage error or refusal"
+            "0": "PROCEED, metadata emitted successfully, or read-only introspection succeeded",
+            "1": "PROCEED_WITH_RISK or ESCALATE",
+            "2": "BLOCK, structured refusal, CLI usage error, or witness I/O error"
+        },
+        "refusal_codes": [
+            {
+                "code": "E_BAD_POLICY",
+                "next_command": "assess <ARTIFACT>... --policy <PATH> --json"
+            },
+            {
+                "code": "E_AMBIGUOUS_POLICY",
+                "next_command": "assess <ARTIFACT>... --policy <PATH> --json"
+            },
+            {
+                "code": "E_UNKNOWN_POLICY",
+                "next_command": "assess <ARTIFACT>... --policy <PATH> --json"
+            },
+            {
+                "code": "E_BAD_ARTIFACT",
+                "next_command": "assess <ARTIFACT>... --policy <PATH> --json"
+            },
+            {
+                "code": "E_DUPLICATE_TOOL",
+                "next_command": "assess <ONE_ARTIFACT_PER_TOOL>... --policy <PATH> --json"
+            },
+            {
+                "code": "E_INCOMPLETE_BASIS",
+                "next_command": "assess <ALL_REQUIRED_ARTIFACTS>... --policy <PATH> --json"
+            },
+            {
+                "code": "E_MISSING_RULE",
+                "next_command": "assess <ARTIFACT>... --policy <PATH_WITH_DEFAULT_RULE> --json"
+            }
+        ],
+        "schemas": {
+            "decision": "assess.v0",
+            "policy": "policy.v0",
+            "doctor_health": HEALTH_SCHEMA,
+            "doctor_capabilities": CAPABILITIES_SCHEMA,
+            "doctor_triage": TRIAGE_SCHEMA
         },
         "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
@@ -138,7 +255,8 @@ fn triage_payload() -> Value {
         "side_effects": side_effects(),
         "fixers": [],
         "recommended_next_steps": [
-            "Use assess --describe for the full compiled operator contract.",
+            "Use assess capabilities --json for the full machine-readable CLI contract.",
+            "Use assess robot-docs guide for the compact agent guide.",
             "Use assess --schema for the assess.v0 decision output schema.",
             "Do not expect assess doctor to read artifacts, load policies, evaluate rules, query or append witness records, or emit portable evidence."
         ]
@@ -287,12 +405,26 @@ fn health_summary(payload: &Value) -> String {
 }
 
 fn robot_docs_text() -> &'static str {
-    "assess doctor robot-docs\n\
+    "assess robot-docs guide\n\
 contract: cmdrvl.read_only_doctor.v1\n\
-commands:\n\
+agent_entrypoints:\n\
+  assess --robot-triage\n\
+  assess capabilities --json\n\
+  assess robot-docs guide\n\
+decision:\n\
+  assess <ARTIFACT>... --policy <PATH> --json\n\
+  assess <ARTIFACT>... --policy-id <ID> --render summary\n\
+witness:\n\
+  assess witness last --json\n\
+  assess witness query policy=<ID> --json\n\
+doctor_compat:\n\
   assess doctor health --json\n\
   assess doctor capabilities --json\n\
   assess doctor --robot-triage\n\
+exit_codes:\n\
+  0 = PROCEED or read-only metadata success\n\
+  1 = PROCEED_WITH_RISK or ESCALATE\n\
+  2 = BLOCK, refusal, CLI usage error, or witness I/O error\n\
 read_only:\n\
   - does not read stdin, artifacts, policies, schemas from disk, or witness ledgers\n\
   - does not construct bundles, evaluate policy rules, append witness records, create directories, or contact providers\n\
@@ -300,6 +432,7 @@ read_only:\n\
 fix_mode:\n\
   - no --fix surface is implemented in this release\n\
 next_steps:\n\
+  - use assess capabilities --json for the full machine-readable command/refusal contract\n\
   - use assess --describe for the full operator manifest\n\
   - use assess --schema for the decision artifact schema"
 }

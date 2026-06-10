@@ -43,13 +43,13 @@ impl RefusalCode {
 
     pub const fn next_command(self) -> &'static str {
         match self {
-            Self::BadPolicy => "assess <ARTIFACT>... --policy <PATH>",
-            Self::AmbiguousPolicy => "assess <ARTIFACT>... --policy <PATH>",
-            Self::UnknownPolicy => "assess <ARTIFACT>... --policy <PATH>",
-            Self::BadArtifact => "assess <ARTIFACT>... --policy <PATH>",
-            Self::DuplicateTool => "assess <ARTIFACT>... --policy <PATH>",
-            Self::IncompleteBasis => "assess <ARTIFACT>... --policy <PATH>",
-            Self::MissingRule => "assess <ARTIFACT>... --policy <PATH>",
+            Self::BadPolicy => "assess <ARTIFACT>... --policy <PATH> --json",
+            Self::AmbiguousPolicy => "assess <ARTIFACT>... --policy <PATH> --json",
+            Self::UnknownPolicy => "assess <ARTIFACT>... --policy <PATH> --json",
+            Self::BadArtifact => "assess <ARTIFACT>... --policy <PATH> --json",
+            Self::DuplicateTool => "assess <ONE_ARTIFACT_PER_TOOL>... --policy <PATH> --json",
+            Self::IncompleteBasis => "assess <ALL_REQUIRED_ARTIFACTS>... --policy <PATH> --json",
+            Self::MissingRule => "assess <ARTIFACT>... --policy <PATH_WITH_DEFAULT_RULE> --json",
         }
     }
 }

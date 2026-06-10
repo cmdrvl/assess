@@ -93,6 +93,9 @@ It does not produce facts. It classifies facts into decisions.
 ```
 assess <ARTIFACT>... --policy <POLICY> [OPTIONS]
 assess witness <query|last|count> [OPTIONS]
+assess --robot-triage
+assess capabilities --json
+assess robot-docs guide
 
 Arguments:
   <ARTIFACT>...          Spine reports to assess (shape, rvl, verify, benchmark, fingerprint results)
@@ -105,13 +108,16 @@ Options:
   --describe             Print operator.json and exit 0
   --schema               Print assess.v0 JSON Schema and exit 0
   --version              Print assess <semver> and exit 0
+  --robot-triage         Print read-only machine triage JSON and exit 0
 ```
 
 One or more artifacts and a policy are required at the CLI level, but the policy's `requires` list must be fully satisfied or `assess` refuses with `E_INCOMPLETE_BASIS`.
 
 `--policy` and `--policy-id` are mutually exclusive; providing both is a refusal (`E_AMBIGUOUS_POLICY`).
 
-`--describe`, `--schema`, and `--version` are checked before normal argument validation.
+`--describe`, `--schema`, `--version`, and `--robot-triage` are checked before normal argument validation.
+Bare `assess` prints long help and exits 0; `assess --json` emits read-only
+capabilities JSON when no artifacts are supplied.
 
 ### Witness subcommands
 

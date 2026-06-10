@@ -1,0 +1,22 @@
+{"id":"S-001","kind":"bare_invocation","surface":"assess","pre":"exit 2 missing policy/artifact","post":"long help exits 0 with agent entrypoints","evidence":"src/cli/mod.rs route_run; tests/cli_shell.rs bare_invocation_prints_agent_entrypoints"}
+{"id":"S-002","kind":"global_flag","surface":"assess --robot-triage","pre":"unknown argument","post":"read-only assess.doctor.triage.v1 JSON","evidence":"src/cli/args.rs robot_triage; tests/doctor.rs top_level_agent_aliases_are_read_only"}
+{"id":"S-003","kind":"subcommand","surface":"assess capabilities --json","pre":"misparsed as artifact then policy error","post":"read-only capabilities JSON","evidence":"src/cli/mod.rs route_capabilities"}
+{"id":"S-004","kind":"subcommand","surface":"assess robot-docs guide","pre":"misparsed as artifact then policy error","post":"plain text agent guide","evidence":"src/cli/mod.rs route_robot_docs"}
+{"id":"S-005","kind":"error","surface":"assess --jsno","pre":"clap suggestion only","post":"suggests --json and next: assess capabilities --json","evidence":"src/cli/mod.rs format_cli_error"}
+{"id":"S-006","kind":"metadata","surface":"assess --json with no artifacts","pre":"missing arguments error","post":"capabilities JSON","evidence":"src/cli/mod.rs route_run"}
+{"id":"S-007","kind":"metadata","surface":"assess doctor capabilities --json","pre":"doctor-only command list","post":"full run/witness/refusal/schema contract","evidence":"src/doctor.rs capabilities_payload"}
+{"id":"S-008","kind":"metadata","surface":"assess doctor robot-docs","pre":"doctor-only guide","post":"agent guide with top-level aliases and run examples","evidence":"src/doctor.rs robot_docs_text"}
+{"id":"S-009","kind":"release","surface":"release.yml Homebrew formula generator","pre":"emitted redundant version and extra blank line","post":"audit-clean formula generation","evidence":".github/workflows/release.yml Generate formula"}
+{"id":"S-010","kind":"docs","surface":"README/AGENTS/PLAN/operator.json","pre":"doctor namespace only","post":"top-level agent entrypoints documented","evidence":"README.md; AGENTS.md; docs/PLAN_ASSESS.md; operator.json"}
+{"id":"S-011","kind":"run","surface":"assess <ARTIFACT>... --policy <PATH> --json","pre":"implemented","post":"unchanged decision semantics","evidence":"tests/e2e_pipeline.rs full_pipeline_proceed_json"}
+{"id":"S-012","kind":"run","surface":"assess <ARTIFACT>... --policy-id <ID> --render summary","pre":"implemented","post":"unchanged summary semantics","evidence":"tests/e2e_pipeline.rs full_pipeline_proceed_summary"}
+{"id":"S-013","kind":"witness","surface":"assess witness last --json","pre":"implemented","post":"unchanged read path","evidence":"tests/witness_suite.rs"}
+{"id":"S-014","kind":"witness","surface":"assess witness query policy=<ID> --json","pre":"implemented","post":"documented in robot docs","evidence":"src/doctor.rs robot_docs_text"}
+{"id":"S-015","kind":"special_flag","surface":"assess --describe","pre":"implemented","post":"operator manifest updated to v0.3.0","evidence":"operator.json"}
+{"id":"S-016","kind":"special_flag","surface":"assess --schema","pre":"implemented","post":"unchanged schema introspection","evidence":"tests/determinism.rs schema_output_is_deterministic"}
+{"id":"S-017","kind":"special_flag","surface":"assess --version","pre":"0.2.0","post":"0.3.0","evidence":"Cargo.toml; Cargo.lock"}
+{"id":"S-018","kind":"refusal","surface":"E_BAD_POLICY","pre":"generic next command","post":"JSON-ready next command","evidence":"src/refusal/codes.rs"}
+{"id":"S-019","kind":"refusal","surface":"E_DUPLICATE_TOOL","pre":"generic next command","post":"one-artifact-per-tool next command","evidence":"src/refusal/codes.rs"}
+{"id":"S-020","kind":"refusal","surface":"E_INCOMPLETE_BASIS","pre":"generic next command","post":"all-required-artifacts next command","evidence":"src/refusal/codes.rs"}
+{"id":"S-021","kind":"help","surface":"assess doctor --help","pre":"help handled by clap parse","post":"custom parse preserves help exit 0","evidence":"src/main.rs; tests/doctor.rs doctor_help_is_available"}
+{"id":"S-022","kind":"safety","surface":"read-only introspection with artifacts","pre":"varied doctor-specific errors","post":"shared read-only alias guard","evidence":"src/cli/mod.rs reject_read_only_alias_args"}

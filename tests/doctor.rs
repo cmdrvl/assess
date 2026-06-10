@@ -117,12 +117,17 @@ fn doctor_capabilities_json_has_no_fixers_or_side_effects() -> Result<(), Box<dy
             .as_array()
             .map(|commands| {
                 commands.iter().any(|command| {
-                    command["name"] == "robot-triage"
+                    command["name"] == "doctor-robot-triage"
                         && command["usage"] == "assess doctor --robot-triage"
                 })
             })
             .unwrap_or(false)
     );
+    assert_eq!(
+        payload["agent_entrypoints"][1]["usage"],
+        "assess capabilities --json"
+    );
+    assert_eq!(payload["refusal_codes"][5]["code"], "E_INCOMPLETE_BASIS");
     assert_doctor_side_effects_absent(workspace.path(), &witness_path);
     Ok(())
 }
@@ -163,9 +168,44 @@ fn doctor_robot_docs_is_plain_text_and_read_only() -> Result<(), Box<dyn std::er
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
     assert!(stdout.contains("cmdrvl.read_only_doctor.v1"));
+    assert!(stdout.contains("assess --robot-triage"));
+    assert!(stdout.contains("assess capabilities --json"));
+    assert!(stdout.contains("assess robot-docs guide"));
     assert!(stdout.contains("assess doctor health --json"));
     assert!(stdout.contains("~/.cmdrvl/config/assess/policies"));
     assert!(stdout.contains("no --fix surface"));
+    assert_doctor_side_effects_absent(workspace.path(), &witness_path);
+    Ok(())
+}
+
+#[test]
+fn top_level_agent_aliases_are_read_only() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = support::TempWorkspace::new("doctor-top-level")?;
+    let witness_path = workspace.child("witness/assess-witness.jsonl");
+
+    let capabilities = assess_cmd_in(workspace.path(), &witness_path)
+        .args(["capabilities", "--json"])
+        .output()?;
+    let payload = parse_stdout_json(&capabilities)?;
+    assert_eq!(payload["schema"], "assess.doctor.capabilities.v1");
+    assert_eq!(
+        payload["agent_entrypoints"][0]["usage"],
+        "assess --robot-triage"
+    );
+
+    let triage = assess_cmd_in(workspace.path(), &witness_path)
+        .arg("--robot-triage")
+        .output()?;
+    let payload = parse_stdout_json(&triage)?;
+    assert_eq!(payload["schema"], "assess.doctor.triage.v1");
+    assert_eq!(payload["read_only"], true);
+
+    let docs = assess_cmd_in(workspace.path(), &witness_path)
+        .args(["robot-docs", "guide"])
+        .output()?;
+    assert!(docs.status.success());
+    assert!(String::from_utf8(docs.stdout)?.contains("assess robot-docs guide"));
+
     assert_doctor_side_effects_absent(workspace.path(), &witness_path);
     Ok(())
 }
