@@ -228,6 +228,59 @@ fn capabilities_payload() -> Value {
             "doctor_capabilities": CAPABILITIES_SCHEMA,
             "doctor_triage": TRIAGE_SCHEMA
         },
+        "composition": {
+            "family": {
+                "name": "cmdrvl-spine",
+                "siblings": ["shape", "rvl", "verify", "benchmark", "lock", "pack"],
+                "capabilities": {
+                    "shape": "shape capabilities --json",
+                    "rvl": "rvl capabilities --json",
+                    "verify": "verify capabilities --json",
+                    "benchmark": "benchmark capabilities --json",
+                    "assess": "assess capabilities --json",
+                    "pack": "pack capabilities --json"
+                }
+            },
+            "role": "decision_classifier",
+            "position": "after_evidence_before_pack",
+            "accepts": [
+                {
+                    "kind": "evidence_bundle",
+                    "description": "One or more tool artifacts from shape, rvl, verify, benchmark, or other declared basis tools."
+                },
+                {
+                    "kind": "policy",
+                    "description": "A policy.v0 YAML file or policy id resolved from the assess policy path."
+                }
+            ],
+            "produces": [
+                {
+                    "kind": "decision_artifact",
+                    "schema": "assess.v0",
+                    "command": "assess <ARTIFACT>... --policy <policy.yaml> --json"
+                }
+            ],
+            "canonical_chains": [
+                {
+                    "name": "evidence_to_decision_to_pack",
+                    "commands": [
+                        "shape <old.csv> <new.csv> --key <column> --json > shape.json",
+                        "rvl <old.csv> <new.csv> --key <column> --json > rvl.json",
+                        "verify run <constraints.verify.json> --bind input=<dataset.csv> --json > verify.json",
+                        "benchmark <CANDIDATE> --assertions <FILE> --key <COLUMN> --json > benchmark.json",
+                        "assess shape.json rvl.json verify.json benchmark.json --policy <policy.yaml> --json > decision.json",
+                        "pack seal shape.json rvl.json verify.json benchmark.json decision.json --output evidence/"
+                    ],
+                    "upstream_tools": ["shape", "rvl", "verify", "benchmark"],
+                    "downstream_tools": ["pack"]
+                }
+            ],
+            "agent_rules": [
+                "Use assess only after upstream tools have produced the evidence artifacts named by policy.",
+                "Do not ask assess to score, compare, validate constraints, or produce facts; it classifies supplied facts.",
+                "Seal assess decisions with pack when the result needs to be portable evidence."
+            ]
+        },
         "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
         "fixers": []
@@ -421,6 +474,9 @@ doctor_compat:\n\
   assess doctor health --json\n\
   assess doctor capabilities --json\n\
   assess doctor --robot-triage\n\
+composition:\n\
+  assess shape.json rvl.json verify.json benchmark.json --policy <policy.yaml> --json > decision.json\n\
+  pack seal shape.json rvl.json verify.json benchmark.json decision.json --output evidence/\n\
 exit_codes:\n\
   0 = PROCEED or read-only metadata success\n\
   1 = PROCEED_WITH_RISK or ESCALATE\n\

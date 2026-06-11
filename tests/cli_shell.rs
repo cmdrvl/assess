@@ -58,6 +58,7 @@ fn json_only_returns_capabilities_contract() -> Result<(), Box<dyn std::error::E
         payload["agent_entrypoints"][0]["usage"],
         "assess --robot-triage"
     );
+    assert_eq!(payload["composition"]["role"], "decision_classifier");
     Ok(())
 }
 

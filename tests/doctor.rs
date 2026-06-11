@@ -127,6 +127,15 @@ fn doctor_capabilities_json_has_no_fixers_or_side_effects() -> Result<(), Box<dy
         payload["agent_entrypoints"][1]["usage"],
         "assess capabilities --json"
     );
+    assert_eq!(payload["composition"]["role"], "decision_classifier");
+    assert_eq!(
+        payload["composition"]["canonical_chains"][0]["upstream_tools"][0],
+        "shape"
+    );
+    assert_eq!(
+        payload["composition"]["canonical_chains"][0]["commands"][4],
+        "assess shape.json rvl.json verify.json benchmark.json --policy <policy.yaml> --json > decision.json"
+    );
     assert_eq!(payload["refusal_codes"][5]["code"], "E_INCOMPLETE_BASIS");
     assert_doctor_side_effects_absent(workspace.path(), &witness_path);
     Ok(())
@@ -172,6 +181,10 @@ fn doctor_robot_docs_is_plain_text_and_read_only() -> Result<(), Box<dyn std::er
     assert!(stdout.contains("assess capabilities --json"));
     assert!(stdout.contains("assess robot-docs guide"));
     assert!(stdout.contains("assess doctor health --json"));
+    assert!(stdout.contains("assess shape.json rvl.json verify.json benchmark.json --policy <policy.yaml> --json > decision.json"));
+    assert!(stdout.contains(
+        "pack seal shape.json rvl.json verify.json benchmark.json decision.json --output evidence/"
+    ));
     assert!(stdout.contains("~/.cmdrvl/config/assess/policies"));
     assert!(stdout.contains("no --fix surface"));
     assert_doctor_side_effects_absent(workspace.path(), &witness_path);
