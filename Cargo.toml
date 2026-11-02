@@ -2,6 +2,7 @@
 name = "assess"
 version = "0.3.0"
 edition = "2024"
+license = "MIT"
 authors = ["CMD+RVL <engineering@cmdrvl.com>"]
 description = "Deterministic decision classification over a spine evidence bundle"
 repository = "https://github.com/cmdrvl/assess"
