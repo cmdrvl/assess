@@ -370,25 +370,113 @@ pub fn format_cli_error(error: &clap::Error) -> String {
         rendered.push('\n');
     }
 
-    let rendered_lower = rendered.to_ascii_lowercase();
-    if rendered_lower.contains("--jsno")
-        || rendered_lower.contains("--jsson")
-        || rendered_lower.contains("--jason")
-        || rendered_lower.contains("--josn")
-    {
-        rendered.push_str("hint: did you mean `--json`?\nnext: assess capabilities --json\n");
-    } else {
-        match error.kind() {
-            ErrorKind::UnknownArgument
-            | ErrorKind::InvalidSubcommand
-            | ErrorKind::MissingRequiredArgument
-            | ErrorKind::ArgumentConflict => rendered
-                .push_str("next: assess capabilities --json\nhelp: assess robot-docs guide\n"),
-            _ => {}
+    if let Some(candidate) = did_you_mean(error) {
+        rendered.push_str(&format!("hint: did you mean `{candidate}`?\n"));
+    }
+    match error.kind() {
+        ErrorKind::UnknownArgument
+        | ErrorKind::InvalidSubcommand
+        | ErrorKind::MissingRequiredArgument
+        | ErrorKind::ArgumentConflict => {
+            rendered.push_str("next: assess capabilities --json\nhelp: assess robot-docs guide\n")
         }
+        _ => {}
     }
 
     rendered
+}
+
+/// Optimal-string-alignment distance: insert, delete, substitute or swap two
+/// adjacent characters each cost 1 (so `--jsno` is one edit from `--json`).
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut d = vec![vec![0usize; b.len() + 1]; a.len() + 1];
+    for (i, row) in d.iter_mut().enumerate() {
+        row[0] = i;
+    }
+    d[0] = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            d[i][j] = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                d[i][j] = d[i][j].min(d[i - 2][j - 2] + 1);
+            }
+        }
+    }
+    d[a.len()][b.len()]
+}
+
+/// The one candidate exactly one edit away from an unknown long flag or
+/// subcommand name, drawn from the command the user was actually inside.
+/// Two or more equally close candidates (or none) yield no hint: never guess.
+fn did_you_mean(error: &clap::Error) -> Option<String> {
+    use clap::error::{ContextKind, ContextValue};
+
+    let context = match error.kind() {
+        ErrorKind::UnknownArgument => ContextKind::InvalidArg,
+        ErrorKind::InvalidSubcommand => ContextKind::InvalidSubcommand,
+        _ => return None,
+    };
+    let token = match error.get(context)? {
+        ContextValue::String(value) => value.split_whitespace().next()?.to_owned(),
+        _ => return None,
+    };
+
+    // Resolve the command path from clap's usage line ("Usage: assess doctor [OPTIONS]").
+    let usage = error
+        .get(ContextKind::Usage)
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    let mut command = Cli::command();
+    command.build();
+    let mut scope = command.clone();
+    for word in usage.split_whitespace().skip(2) {
+        match scope.find_subcommand(word) {
+            Some(sub) => scope = sub.clone(),
+            None => break,
+        }
+    }
+
+    let mut candidates = std::collections::BTreeSet::new();
+    if token.starts_with("--") {
+        candidates.insert("--help".to_owned());
+        for arg in scope.get_arguments() {
+            if let Some(long) = arg.get_long() {
+                candidates.insert(format!("--{long}"));
+            }
+            for alias in arg.get_visible_aliases().into_iter().flatten() {
+                candidates.insert(format!("--{alias}"));
+            }
+        }
+    } else if !token.starts_with('-') {
+        candidates.insert("help".to_owned());
+        for sub in scope.get_subcommands().filter(|sub| !sub.is_hide_set()) {
+            candidates.insert(sub.get_name().to_owned());
+        }
+    } else {
+        return None;
+    }
+
+    unique_one_edit_away(&token, candidates)
+}
+
+/// `Some(candidate)` only when exactly one candidate is one edit from `token`.
+/// A tie or no match returns `None`: a hint must never be a guess.
+fn unique_one_edit_away(
+    token: &str,
+    candidates: impl IntoIterator<Item = String>,
+) -> Option<String> {
+    let mut close = candidates
+        .into_iter()
+        .filter(|candidate| edit_distance(token, candidate) == 1);
+    match (close.next(), close.next()) {
+        (Some(only), None) => Some(only),
+        _ => None,
+    }
 }
 
 fn render_mode(json: bool, render: Option<RunRenderMode>) -> RenderMode {
@@ -408,5 +496,50 @@ fn refusal_witness_status(no_witness: bool) -> WitnessStatus {
         WitnessStatus::Disabled
     } else {
         WitnessStatus::NotWritten
+    }
+}
+
+#[cfg(test)]
+mod typo_tests {
+    use super::*;
+
+    fn set(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn distance_counts_swaps_as_one_edit() {
+        assert_eq!(edit_distance("--jsno", "--json"), 1);
+        assert_eq!(edit_distance("--josn", "--json"), 1);
+        assert_eq!(edit_distance("--jsn", "--json"), 1);
+        assert_eq!(edit_distance("--jsson", "--json"), 1);
+        assert_eq!(edit_distance("--jxon", "--json"), 1);
+        assert_eq!(edit_distance("--json", "--json"), 0);
+        assert_eq!(edit_distance("--js", "--json"), 2);
+    }
+
+    #[test]
+    fn single_candidate_is_suggested() {
+        assert_eq!(
+            unique_one_edit_away("--polcy", set(&["--policy", "--policy-id", "--json"])),
+            Some("--policy".to_owned())
+        );
+    }
+
+    #[test]
+    fn tie_yields_no_hint() {
+        // `--jon` is one edit from both --json and --join: never guess.
+        assert_eq!(
+            unique_one_edit_away("--jon", set(&["--json", "--join", "--policy"])),
+            None
+        );
+    }
+
+    #[test]
+    fn nothing_close_yields_no_hint() {
+        assert_eq!(
+            unique_one_edit_away("--completely-off", set(&["--json", "--policy"])),
+            None
+        );
     }
 }

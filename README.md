@@ -174,6 +174,8 @@ Configuration footprint:
 - default: compact human-readable decision or refusal report
 - `--json`: canonical `assess.v0` JSON artifact or structured refusal envelope
 - `assess --json`: the `operator.v1` contract document when no artifacts are supplied
+- `--json` and `--render` are mutually exclusive (usage error, exit `2`); `--render summary` is one line, `--render summary-tsv` is a header plus one row; both are derived from the same decision or refusal object that `--json` prints
+- Typos: a long flag or subcommand name exactly one edit (insert, delete, substitute, or swap adjacent letters) from a valid name of the command you are inside gets one `hint: did you mean `--json`?` line on stderr. A tie or a far miss gets no hint, and a hint never changes the exit code (`2`) or writes to stdout. Top-level subcommand typos (`assess capabilites`) cannot be detected because a bare word is an artifact path
 - `--out PATH` (alias `--output`): write the report to `PATH` instead of stdout; stdout stays empty and the exit code is unchanged (a failed write is exit `2`)
 - No ANSI escapes are emitted when output is piped, `NO_COLOR` is set, or `TERM=dumb`
 - `assess witness query|count|last`: an empty result is exit `0` (`[]`, `{"count":0}`, `null`)
