@@ -421,7 +421,7 @@ fn did_you_mean(error: &clap::Error) -> Option<String> {
         ErrorKind::InvalidSubcommand => ContextKind::InvalidSubcommand,
         _ => return None,
     };
-    let token = match error.get(context)? {
+    let unknown_name = match error.get(context)? {
         ContextValue::String(value) => value.split_whitespace().next()?.to_owned(),
         _ => return None,
     };
@@ -442,7 +442,7 @@ fn did_you_mean(error: &clap::Error) -> Option<String> {
     }
 
     let mut candidates = std::collections::BTreeSet::new();
-    if token.starts_with("--") {
+    if unknown_name.starts_with("--") {
         candidates.insert("--help".to_owned());
         for arg in scope.get_arguments() {
             if let Some(long) = arg.get_long() {
@@ -452,7 +452,7 @@ fn did_you_mean(error: &clap::Error) -> Option<String> {
                 candidates.insert(format!("--{alias}"));
             }
         }
-    } else if !token.starts_with('-') {
+    } else if !unknown_name.starts_with('-') {
         candidates.insert("help".to_owned());
         for sub in scope.get_subcommands().filter(|sub| !sub.is_hide_set()) {
             candidates.insert(sub.get_name().to_owned());
@@ -461,18 +461,18 @@ fn did_you_mean(error: &clap::Error) -> Option<String> {
         return None;
     }
 
-    unique_one_edit_away(&token, candidates)
+    unique_one_edit_away(&unknown_name, candidates)
 }
 
-/// `Some(candidate)` only when exactly one candidate is one edit from `token`.
+/// `Some(candidate)` only when exactly one candidate is one edit from the unknown name.
 /// A tie or no match returns `None`: a hint must never be a guess.
 fn unique_one_edit_away(
-    token: &str,
+    unknown_name: &str,
     candidates: impl IntoIterator<Item = String>,
 ) -> Option<String> {
     let mut close = candidates
         .into_iter()
-        .filter(|candidate| edit_distance(token, candidate) == 1);
+        .filter(|candidate| edit_distance(unknown_name, candidate) == 1);
     match (close.next(), close.next()) {
         (Some(only), None) => Some(only),
         _ => None,
