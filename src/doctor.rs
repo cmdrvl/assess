@@ -187,9 +187,10 @@ fn capabilities_payload() -> Value {
             }
         ],
         "exit_codes": {
-            "0": "PROCEED, metadata emitted successfully, or read-only introspection succeeded",
-            "1": "PROCEED_WITH_RISK or ESCALATE",
-            "2": "BLOCK, structured refusal, CLI usage error, or witness I/O error"
+            "0": "PROCEED, PROCEED_WITH_RISK, metadata emitted successfully, or read-only introspection succeeded",
+            "1": "ESCALATE",
+            "2": "structured refusal, CLI usage error, or witness I/O error (never a policy verdict)",
+            "3": "BLOCK (valid policy verdict, distinct from refusal)"
         },
         "refusal_codes": [
             {
@@ -478,9 +479,10 @@ composition:\n\
   assess shape.json rvl.json verify.json benchmark.json --policy <policy.yaml> --json > decision.json\n\
   pack seal shape.json rvl.json verify.json benchmark.json decision.json --output evidence/\n\
 exit_codes:\n\
-  0 = PROCEED or read-only metadata success\n\
-  1 = PROCEED_WITH_RISK or ESCALATE\n\
-  2 = BLOCK, refusal, CLI usage error, or witness I/O error\n\
+  0 = PROCEED, PROCEED_WITH_RISK, or read-only metadata success\n\
+  1 = ESCALATE\n\
+  2 = refusal, CLI usage error, or witness I/O error (never a policy verdict)\n\
+  3 = BLOCK (valid policy verdict, distinct from refusal)\n\
 read_only:\n\
   - does not read stdin, artifacts, policies, schemas from disk, or witness ledgers\n\
   - does not construct bundles, evaluate policy rules, append witness records, create directories, or contact providers\n\

@@ -48,7 +48,7 @@ impl Execution {
             render_mode,
             RenderContext::with_witness_status(witness_status),
         );
-        Self::new(AssessExit::Stop, stdout)
+        Self::new(AssessExit::Refusal, stdout)
     }
 }
 
@@ -108,7 +108,7 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
                 command.render_mode,
                 refusal_context,
             );
-            return Ok(Execution::new(AssessExit::Stop, stdout));
+            return Ok(Execution::new(AssessExit::Refusal, stdout));
         }
     };
 
@@ -127,7 +127,7 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
                 command.render_mode,
                 refusal_context,
             );
-            return Ok(Execution::new(AssessExit::Stop, stdout));
+            return Ok(Execution::new(AssessExit::Refusal, stdout));
         }
     };
 
@@ -140,7 +140,7 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
                 command.render_mode,
                 refusal_context,
             );
-            return Ok(Execution::new(AssessExit::Stop, stdout));
+            return Ok(Execution::new(AssessExit::Refusal, stdout));
         }
     };
 

@@ -226,7 +226,7 @@ fn full_pipeline_proceed_summary() -> Result<(), Box<dyn std::error::Error>> {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn default_block_exit_code_2() -> Result<(), Box<dyn std::error::Error>> {
+fn default_block_exit_code_3() -> Result<(), Box<dyn std::error::Error>> {
     let dir = unique_dir("block");
 
     let verify = write_artifact(
@@ -245,7 +245,7 @@ fn default_block_exit_code_2() -> Result<(), Box<dyn std::error::Error>> {
     ]);
 
     let execution = execute(cli)?;
-    assert_eq!(execution.exit_code, 2);
+    assert_eq!(execution.exit_code, 3);
 
     let parsed: Value = serde_json::from_str(execution.stdout.trim())?;
     assert_eq!(parsed["decision_band"], "BLOCK");
@@ -256,11 +256,11 @@ fn default_block_exit_code_2() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // ---------------------------------------------------------------------------
-// PROCEED_WITH_RISK path (exit 1)
+// PROCEED_WITH_RISK path (exit 0; risk is reported in the JSON)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn proceed_with_risk_exit_code_1() -> Result<(), Box<dyn std::error::Error>> {
+fn proceed_with_risk_exit_code_0() -> Result<(), Box<dyn std::error::Error>> {
     let dir = unique_dir("risk");
 
     let shape = write_artifact(
@@ -296,7 +296,7 @@ fn proceed_with_risk_exit_code_1() -> Result<(), Box<dyn std::error::Error>> {
     ]);
 
     let execution = execute(cli)?;
-    assert_eq!(execution.exit_code, 1);
+    assert_eq!(execution.exit_code, 0);
 
     let parsed: Value = serde_json::from_str(execution.stdout.trim())?;
     assert_eq!(parsed["decision_band"], "PROCEED_WITH_RISK");

@@ -254,7 +254,7 @@ fn decision_bands_map_to_cli_exit_codes() {
     );
     assert_eq!(
         AssessExit::from_decision_band(DecisionBand::ProceedWithRisk).code(),
-        1
+        0
     );
     assert_eq!(
         AssessExit::from_decision_band(DecisionBand::Escalate).code(),
@@ -262,6 +262,9 @@ fn decision_bands_map_to_cli_exit_codes() {
     );
     assert_eq!(
         AssessExit::from_decision_band(DecisionBand::Block).code(),
-        2
+        3
     );
+    // Refusals and CLI errors keep their own code, distinct from BLOCK.
+    assert_eq!(AssessExit::Refusal.code(), 2);
+    assert_ne!(AssessExit::Refusal.code(), AssessExit::Block.code());
 }

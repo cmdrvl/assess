@@ -152,9 +152,10 @@
     }
   ],
   "exit_codes": {
-    "0": { "meaning": "PROCEED", "domain": "positive" },
-    "1": { "meaning": "PROCEED_WITH_RISK or ESCALATE", "domain": "negative" },
-    "2": { "meaning": "BLOCK / REFUSAL / CLI error", "domain": "error" }
+    "0": { "meaning": "PROCEED | PROCEED_WITH_RISK (risk is in the JSON output, not the code)", "domain": "positive", "retryable": false },
+    "1": { "meaning": "ESCALATE", "domain": "negative", "retryable": false },
+    "2": { "meaning": "REFUSAL | CLI error | witness I/O error (never a policy verdict)", "domain": "error", "retryable": false },
+    "3": { "meaning": "BLOCK (valid policy verdict, distinct from refusal)", "domain": "policy", "retryable": false }
   },
   "refusals": [
     {

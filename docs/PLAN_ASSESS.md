@@ -493,7 +493,7 @@ assess/
 │   ├── cli/
 │   │   ├── mod.rs               — Argument parsing and command routing
 │   │   ├── args.rs              — clap::Parser derive struct (Args)
-│   │   └── exit.rs              — ExitCode enum: Proceed(0), Attention(1), Stop(2)
+│   │   └── exit.rs              — AssessExit enum: Proceed(0), Escalate(1), Refusal(2), Block(3)
 │   ├── policy/
 │   │   ├── mod.rs               — Policy loading orchestrator (resolve → read → parse → validate)
 │   │   ├── loader.rs            — Resolution order: env var → builtin → user dir
@@ -570,7 +570,7 @@ assess/
 | I06 | The default rule (if present) must be last; it always matches when reached | Rules after default being dead code |
 | I07 | `policy.sha256` in output = SHA-256 of the policy file's raw bytes | Stale or tampered policy hash making output unverifiable |
 | I08 | Every non-PROCEED decision band has a non-empty `risk_code` in the rule | Risk-bearing decisions with no machine-readable reason |
-| I09 | All refusals exit 2; BLOCK exits 2; PROCEED exits 0; PROCEED_WITH_RISK and ESCALATE exit 1 | Pipeline automation misinterpreting the decision |
+| I09 | All refusals and CLI errors exit 2; BLOCK exits 3; PROCEED and PROCEED_WITH_RISK exit 0; ESCALATE exits 1 | Pipeline automation misinterpreting the decision |
 | I10 | Witness record is appended for every invocation unless `--no-witness` is set | Lost audit trail for production decisions |
 | I11 | Every provided artifact appears in `epistemic_basis`, even if not in `requires` | Silent artifact dropping |
 | I12 | `matched_rule` in output is the `name` field of the rule that won | Output not traceable to the specific policy rule |
@@ -782,7 +782,7 @@ Each internal error maps to exactly one refusal code. `PolicyError::Io` and `Pol
 |---------|----------|--------|-----------|------|-----------------|
 | E01 | C01, C08 | — | I09 | integration | shape(COMPATIBLE) + rvl(REAL_CHANGE) + verify(PASS) → PROCEED, exit 0 |
 | E02 | C01, C08 | — | I09 | integration | rvl(E_DIFFUSE) → ESCALATE, exit 1 |
-| E03 | C01, C08 | — | I09 | integration | Default rule fires → BLOCK, exit 2 |
+| E03 | C01, C08 | — | I09 | integration | Default rule fires → BLOCK, exit 3 |
 | E04 | C02 | — | I09 | integration | `E_BAD_POLICY` → valid refusal JSON, exit 2 |
 | E05 | C02 | T05 | — | integration | `--policy X --policy-id Y` → `E_AMBIGUOUS_POLICY`, exit 2 |
 | E06 | C10 | — | — | integration | Output validates against pack's `artifact_assess.json` schema |

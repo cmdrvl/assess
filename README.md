@@ -149,9 +149,14 @@ Configuration footprint:
 
 | Exit | Meaning |
 |------|---------|
-| `0` | `PROCEED` |
-| `1` | `PROCEED_WITH_RISK` or `ESCALATE` |
-| `2` | `BLOCK`, refusal, or CLI error |
+| `0` | `PROCEED` or `PROCEED_WITH_RISK` (the risk is in the JSON output, not the code) |
+| `1` | `ESCALATE` |
+| `2` | refusal, CLI error, or witness I/O error — never a policy verdict |
+| `3` | `BLOCK` — a valid, deterministic policy verdict, distinct from refusal |
+
+`case $?` can therefore tell a malformed invocation or missing input (`2`) from a clean `BLOCK` (`3`).
+
+**Migration (assess 0.3.0 → next release):** `BLOCK` moves from exit `2` to `3`, and `PROCEED_WITH_RISK` moves from exit `1` to `0`. Scripts that treated `2` as "blocked" must now check `3` (and still treat `2` as "invocation failed"); scripts that halted on `1` for `PROCEED_WITH_RISK` must read `decision_band` from `--json` output instead. The full contract is spine-rules `docs/exit-codes.md`.
 
 ---
 

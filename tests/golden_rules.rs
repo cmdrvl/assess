@@ -34,14 +34,33 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
     assert!(usage.contains(&"assess robot-docs guide"));
     assert!(usage.contains(&"assess witness <query|last|count> [OPTIONS]"));
 
-    assert_eq!(operator["exit_codes"]["0"]["meaning"], "PROCEED");
-    assert_eq!(
-        operator["exit_codes"]["1"]["meaning"],
-        "PROCEED_WITH_RISK or ESCALATE"
+    for (code, domain) in [
+        ("0", "positive"),
+        ("1", "negative"),
+        ("2", "error"),
+        ("3", "policy"),
+    ] {
+        assert_eq!(operator["exit_codes"][code]["domain"], domain);
+        assert_eq!(operator["exit_codes"][code]["retryable"], false);
+    }
+    assert!(
+        operator["exit_codes"]["0"]["meaning"]
+            .as_str()
+            .unwrap()
+            .starts_with("PROCEED | PROCEED_WITH_RISK")
     );
-    assert_eq!(
-        operator["exit_codes"]["2"]["meaning"],
-        "BLOCK / REFUSAL / CLI error"
+    assert_eq!(operator["exit_codes"]["1"]["meaning"], "ESCALATE");
+    assert!(
+        operator["exit_codes"]["2"]["meaning"]
+            .as_str()
+            .unwrap()
+            .starts_with("REFUSAL | CLI error")
+    );
+    assert!(
+        operator["exit_codes"]["3"]["meaning"]
+            .as_str()
+            .unwrap()
+            .starts_with("BLOCK")
     );
 
     assert_eq!(
@@ -50,7 +69,7 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
     );
     assert_eq!(
         AssessExit::from_decision_band(DecisionBand::ProceedWithRisk).code(),
-        1
+        0
     );
     assert_eq!(
         AssessExit::from_decision_band(DecisionBand::Escalate).code(),
@@ -58,7 +77,7 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
     );
     assert_eq!(
         AssessExit::from_decision_band(DecisionBand::Block).code(),
-        2
+        3
     );
 
     let refusal_codes = operator["refusals"]
