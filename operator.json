@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v1",
   "name": "assess",
-  "tool_version": "0.3.0",
+  "tool_version": "0.4.0",
   "contract_version": "1.0.0",
   "description": "Deterministic decision classification over a complete spine evidence bundle",
   "repository": "https://github.com/cmdrvl/assess",
