@@ -219,7 +219,7 @@ fn capabilities_detail() -> Value {
             {
                 "name": "describe",
                 "usage": "assess --describe",
-                "output_schema": "operator.v0",
+                "output_schema": OPERATOR_SCHEMA,
                 "description": "Emit embedded operator manifest before normal validation"
             },
             {

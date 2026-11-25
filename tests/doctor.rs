@@ -276,6 +276,101 @@ fn doctor_fix_is_not_available() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Every string anywhere in `value` that names an operator schema (`operator.v<N>`), with the
+/// JSON path it was found at.
+fn operator_schema_labels(value: &Value, path: &str, found: &mut Vec<(String, String)>) {
+    match value {
+        Value::String(text) => {
+            let is_label = text
+                .strip_prefix("operator.v")
+                .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()));
+            if is_label {
+                found.push((path.to_owned(), text.clone()));
+            }
+        }
+        Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                operator_schema_labels(item, &format!("{path}[{index}]"), found);
+            }
+        }
+        Value::Object(map) => {
+            for (key, item) in map {
+                operator_schema_labels(item, &format!("{path}.{key}"), found);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The labels in `doctor_document` that disagree with the schema `--describe` emits.
+fn mismatched_operator_labels(doctor_document: &Value, describe_schema: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    operator_schema_labels(doctor_document, "$", &mut found);
+    found
+        .into_iter()
+        .filter(|(_, label)| label != describe_schema)
+        .map(|(path, label)| format!("{path} = {label}"))
+        .collect()
+}
+
+#[test]
+fn every_operator_schema_label_in_doctor_output_matches_what_describe_emits()
+-> Result<(), Box<dyn std::error::Error>> {
+    let describe = parse_stdout_json(
+        &Command::new(env!("CARGO_BIN_EXE_assess"))
+            .arg("--describe")
+            .output()?,
+    )?;
+    let emitted = describe["schema_version"]
+        .as_str()
+        .ok_or_else(|| missing_json_field("schema_version"))?
+        .to_owned();
+    assert_eq!(emitted, "operator.v1");
+
+    for args in [
+        &["doctor", "capabilities", "--json"][..],
+        &["doctor", "health", "--json"][..],
+        &["doctor", "triage", "--json"][..],
+        &["capabilities", "--json"][..],
+    ] {
+        let payload = parse_stdout_json(
+            &Command::new(env!("CARGO_BIN_EXE_assess"))
+                .args(args)
+                .output()?,
+        )?;
+        let mut found = Vec::new();
+        operator_schema_labels(&payload, "$", &mut found);
+        assert!(
+            args == ["doctor", "health", "--json"]
+                || args == ["doctor", "triage", "--json"]
+                || !found.is_empty(),
+            "{args:?}: expected at least one operator schema label"
+        );
+        assert_eq!(
+            mismatched_operator_labels(&payload, &emitted),
+            Vec::<String>::new(),
+            "{args:?}: operator schema labels must equal what --describe emits ({emitted})"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_stale_operator_v0_label_is_caught_by_the_label_check() {
+    // Planted negative: the exact defect this test exists for (doctor capabilities labelling
+    // the describe action `operator.v0` while --describe emits operator.v1).
+    let planted = serde_json::json!({
+        "agent_entrypoints": [
+            { "name": "describe", "output_schema": "operator.v0" },
+            { "name": "capabilities", "output_schema": "operator.v1" }
+        ]
+    });
+    assert_eq!(
+        mismatched_operator_labels(&planted, "operator.v1"),
+        vec!["$.agent_entrypoints[0].output_schema = operator.v0".to_owned()]
+    );
+}
+
 #[test]
 fn describe_manifest_includes_doctor() -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new(env!("CARGO_BIN_EXE_assess"))
