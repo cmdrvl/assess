@@ -1,9 +1,11 @@
 {
-  "schema_version": "operator.v0",
+  "schema_version": "operator.v1",
   "name": "assess",
-  "version": "0.3.0",
+  "tool_version": "0.3.0",
+  "contract_version": "1.0.0",
   "description": "Deterministic decision classification over a complete spine evidence bundle",
   "repository": "https://github.com/cmdrvl/assess",
+  "license": "MIT",
   "invocation": {
     "binary": "assess",
     "usage": [
@@ -12,7 +14,7 @@
       "assess --robot-triage",
       "assess capabilities --json",
       "assess robot-docs guide",
-      "assess doctor [health|capabilities|robot-docs|--robot-triage] [--json]",
+      "assess doctor [health|capabilities|triage|robot-docs] [--json]",
       "assess witness <query|last|count> [OPTIONS]"
     ],
     "output_mode": "report",
@@ -56,6 +58,13 @@
       "description": "Emit compact summary output derived from the existing decision/refusal object"
     },
     {
+      "name": "out",
+      "flag": "--out",
+      "aliases": ["--output"],
+      "type": "file_path",
+      "description": "Write the decision/refusal report to this file instead of stdout (stdout stays empty; the exit code is unchanged)"
+    },
+    {
       "name": "no_witness",
       "flag": "--no-witness",
       "type": "flag",
@@ -65,7 +74,7 @@
       "name": "robot_triage",
       "flag": "--robot-triage",
       "type": "flag",
-      "description": "Emit read-only machine triage JSON and exit 0 before normal validation"
+      "description": "Deprecated alias of `assess doctor triage --json`: emit read-only machine triage JSON and exit before normal validation"
     },
     {
       "name": "describe",
@@ -86,13 +95,13 @@
       "description": "Print version and exit 0 before normal validation"
     }
   ],
-  "subcommands": [
+  "commands": [
     {
       "name": "capabilities",
       "usage": "assess capabilities --json",
-      "description": "Top-level read-only machine contract alias for agents",
+      "description": "Top-level read-only machine contract: prints exactly the document `assess --describe` prints (operator.v1)",
       "output_mode": "json",
-      "output_schema": "assess.doctor.capabilities.v1",
+      "output_schema": "operator.v1",
       "status": "implemented",
       "read_only": true
     },
@@ -107,7 +116,7 @@
     },
     {
       "name": "witness",
-      "description": "Local witness ledger query commands",
+      "description": "Local witness ledger query commands. An empty result exits 0: `query` prints [], `count` prints a zero count, `last` prints null.",
       "status": "implemented",
       "actions": [
         { "name": "query", "usage": "assess witness query [FILTERS] [--json]" },
@@ -121,40 +130,23 @@
     },
     {
       "name": "doctor",
-      "usage": "assess doctor [health|capabilities|robot-docs|--robot-triage] [--json]",
-      "description": "Read-only health, capabilities, and robot-oriented diagnostics for the compiled assess operator contract",
+      "usage": "assess doctor [health|capabilities|triage|robot-docs] [--json]",
+      "description": "Read-only health, capabilities, and triage diagnostics (cmdrvl.doctor.v1). `doctor --json` is health; `doctor triage --json` replaces `assess doctor --robot-triage` and `assess --robot-triage`, which remain as deprecated aliases. Exit 0 healthy, 1 unhealthy, 2 usage error.",
       "output_mode": "mixed",
-      "output_schema": "assess.doctor.health.v1 | assess.doctor.capabilities.v1 | assess.doctor.triage.v1 | text/plain",
+      "output_schema": "cmdrvl.doctor.v1 | text/plain",
       "status": "implemented",
       "read_only": true,
       "fixers": [],
-      "exit_codes": {
-        "0": { "meaning": "doctor report emitted successfully", "domain": "positive" },
-        "1": { "meaning": "reserved for future unhealthy read-only findings", "domain": "negative" },
-        "2": { "meaning": "CLI usage error or refusal", "domain": "error" }
-      },
       "options": [
-        { "name": "json", "flag": "--json", "type": "flag", "description": "Emit JSON for health or capabilities reports" },
-        { "name": "robot_triage", "flag": "--robot-triage", "type": "flag", "description": "Emit compact assess.doctor.triage.v1 JSON" }
-      ],
-      "side_effects": {
-        "reads_stdin": false,
-        "reads_artifact_files": false,
-        "reads_policy_files": false,
-        "validates_policy": false,
-        "constructs_bundle": false,
-        "evaluates_rules": false,
-        "queries_witness_ledger": false,
-        "appends_witness_ledger": false,
-        "writes_doctor_artifacts": false,
-        "uses_network": false
-      }
+        { "name": "json", "flag": "--json", "type": "flag", "description": "Emit cmdrvl.doctor.v1 JSON for health, capabilities or triage" },
+        { "name": "robot_triage", "flag": "--robot-triage", "type": "flag", "description": "Deprecated alias of `doctor triage --json`" }
+      ]
     }
   ],
   "exit_codes": {
     "0": { "meaning": "PROCEED | PROCEED_WITH_RISK (risk is in the JSON output, not the code)", "domain": "positive", "retryable": false },
-    "1": { "meaning": "ESCALATE", "domain": "negative", "retryable": false },
-    "2": { "meaning": "REFUSAL | CLI error | witness I/O error (never a policy verdict)", "domain": "error", "retryable": false },
+    "1": { "meaning": "ESCALATE (doctor: unhealthy)", "domain": "negative", "retryable": false },
+    "2": { "meaning": "REFUSAL | CLI error | witness query I/O error (never a policy verdict)", "domain": "error", "retryable": false },
     "3": { "meaning": "BLOCK (valid policy verdict, distinct from refusal)", "domain": "policy", "retryable": false }
   },
   "refusals": [
@@ -194,8 +186,33 @@
       "action": "escalate"
     }
   ],
+  "env_vars": [
+    {
+      "name": "ASSESS_POLICY_PATH",
+      "description": "Colon-separated directories searched first when resolving --policy-id"
+    },
+    {
+      "name": "EPISTEMIC_WITNESS",
+      "description": "Path of the witness ledger; overrides ~/.cmdrvl/state/witness/witness.jsonl"
+    },
+    {
+      "name": "NO_COLOR",
+      "description": "Any non-empty value disables ANSI escapes; assess also emits none when output is not a TTY or TERM=dumb"
+    }
+  ],
+  "formats": ["human", "json", "summary", "summary-tsv"],
+  "side_effects": {
+    "reads_files": true,
+    "writes_files": true,
+    "network": false,
+    "writes_witness": true,
+    "notes": "Reads artifacts and policies. Writes only the witness ledger (suppressed by --no-witness) and the --out file. doctor and the introspection commands read and write nothing."
+  },
+  "pipeline": {
+    "upstream": ["shape", "rvl", "verify", "benchmark"],
+    "downstream": ["pack"]
+  },
   "capabilities": {
-    "formats": ["human", "json", "summary", "summary-tsv"],
     "profile_aware": false,
     "streaming": false,
     "witness": {
@@ -204,13 +221,10 @@
       "no_witness_flag": "suppresses_recording"
     }
   },
-  "pipeline": {
-    "upstream": ["shape", "rvl", "verify", "benchmark"],
-    "downstream": ["pack"]
-  },
   "notes": [
     "Metadata surfaces (--describe, --schema, --version) are implemented.",
     "Decision execution and witness execution are implemented.",
-    "Run mode supports compact summary and TSV summary render surfaces via --render."
+    "Run mode supports compact summary and TSV summary render surfaces via --render.",
+    "exit_codes[].retryable is a local assess extension (not part of operator.v1): every code is false because re-running the same inputs never changes a verdict or a refusal."
   ]
 }

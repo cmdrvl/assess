@@ -58,9 +58,31 @@ pub enum AssessError {
     Usage(#[from] clap::Error),
     #[error("{0}")]
     Witness(String),
+    #[error("{0}")]
+    Output(String),
 }
 
 pub fn execute(cli: Cli) -> Result<Execution, AssessError> {
+    let out = cli.out.clone();
+    let execution = execute_route(cli)?;
+    match out {
+        None => Ok(execution),
+        Some(path) => {
+            std::fs::write(&path, &execution.stdout).map_err(|error| {
+                AssessError::Output(format!(
+                    "assess: failed to write --out file {}: {error}",
+                    path.display()
+                ))
+            })?;
+            Ok(Execution {
+                exit_code: execution.exit_code,
+                stdout: String::new(),
+            })
+        }
+    }
+}
+
+fn execute_route(cli: Cli) -> Result<Execution, AssessError> {
     match cli::route(cli) {
         Ok(Route::Help) => Ok(Execution::new(AssessExit::Proceed, cli::long_help())),
         Ok(Route::Describe) => Ok(Execution::new(AssessExit::Proceed, OPERATOR_JSON)),
@@ -161,9 +183,14 @@ fn execute_run(command: cli::RunCommand) -> Result<Execution, AssessError> {
             .with_duration_ms(elapsed.as_millis() as u64)
             .with_timestamp(unix_seconds_now());
 
-        witness::ledger::append(&record)
-            .map_err(|e| AssessError::Witness(format!("failed to append witness: {e}")))?;
-        WitnessStatus::Written
+        // R-017: a witness write failure must never change the decision or its exit code.
+        match witness::ledger::append(&record) {
+            Ok(()) => WitnessStatus::Written,
+            Err(error) => {
+                eprintln!("assess: warning: failed to append witness record: {error}");
+                WitnessStatus::NotWritten
+            }
+        }
     };
 
     let stdout = output::render_with_context(

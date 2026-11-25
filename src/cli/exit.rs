@@ -16,6 +16,9 @@ use crate::policy::DecisionBand;
 pub enum AssessExit {
     Proceed,
     Escalate,
+    /// `doctor` found an error finding; shares code 1 with ESCALATE (doctor is
+    /// exempt from the verdict domain, see docs/exit-codes.md).
+    Unhealthy,
     Refusal,
     Block,
 }
@@ -24,7 +27,7 @@ impl AssessExit {
     pub const fn code(self) -> u8 {
         match self {
             Self::Proceed => 0,
-            Self::Escalate => 1,
+            Self::Escalate | Self::Unhealthy => 1,
             Self::Refusal => 2,
             Self::Block => 3,
         }

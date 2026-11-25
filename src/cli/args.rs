@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 
 const AFTER_LONG_HELP: &str = "\
 Agent entrypoints:
-  assess --robot-triage
+  assess doctor triage --json   (alias: assess --robot-triage)
   assess capabilities --json
   assess robot-docs guide
 
@@ -71,6 +71,14 @@ pub struct Cli {
     )]
     pub no_witness: bool,
 
+    #[arg(
+        long,
+        visible_alias = "output",
+        value_name = "PATH",
+        help = "Write the report to PATH instead of stdout (stdout stays empty; exit code unchanged)"
+    )]
+    pub out: Option<PathBuf>,
+
     #[arg(long, global = true, help = "Print embedded operator.json and exit")]
     pub describe: bool,
 
@@ -131,6 +139,10 @@ pub struct DoctorArgs {
 pub enum DoctorCommand {
     Health,
     Capabilities,
+    #[command(
+        about = "Triage report (replaces `--robot-triage`, which stays as a deprecated alias)"
+    )]
+    Triage,
     #[command(name = "robot-docs")]
     RobotDocs,
 }

@@ -33,9 +33,10 @@ impl WitnessCommandOutput {
         }
     }
 
-    fn no_match(stdout: String) -> Self {
+    /// An empty result is a successful read: exit 0 (spine-rules empty-query rule).
+    fn empty(stdout: String) -> Self {
         Self {
-            exit_code: 1,
+            exit_code: 0,
             stdout,
         }
     }
@@ -56,11 +57,9 @@ pub fn render_query_from_path(
 
     if records.is_empty() {
         return Ok(if json_output {
-            WitnessCommandOutput::no_match("[]".to_owned())
+            WitnessCommandOutput::empty("[]".to_owned())
         } else {
-            WitnessCommandOutput::no_match(
-                "assess: witness ledger has no matching records".to_owned(),
-            )
+            WitnessCommandOutput::empty("assess: witness ledger has no matching records".to_owned())
         });
     }
 
@@ -93,9 +92,9 @@ pub fn render_last_from_path(
 ) -> Result<WitnessCommandOutput, String> {
     let Some(record) = last_from_path(path)? else {
         return Ok(if json_output {
-            WitnessCommandOutput::no_match("null".to_owned())
+            WitnessCommandOutput::empty("null".to_owned())
         } else {
-            WitnessCommandOutput::no_match("assess: witness ledger is empty".to_owned())
+            WitnessCommandOutput::empty("assess: witness ledger is empty".to_owned())
         });
     };
 
@@ -124,9 +123,9 @@ pub fn render_count_from_path(
     let count = count_from_path(path, filters)?;
     if count == 0 {
         return Ok(if json_output {
-            WitnessCommandOutput::no_match(json!({ "count": 0 }).to_string())
+            WitnessCommandOutput::empty(json!({ "count": 0 }).to_string())
         } else {
-            WitnessCommandOutput::no_match("0".to_owned())
+            WitnessCommandOutput::empty("0".to_owned())
         });
     }
 

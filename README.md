@@ -116,13 +116,22 @@ Query the local witness log:
 Run read-only doctor diagnostics for agent automation:
 
 ```bash
-./target/release/assess --robot-triage
-./target/release/assess capabilities --json
+./target/release/assess doctor --json              # health (cmdrvl.doctor.v1)
+./target/release/assess doctor capabilities --json # cmdrvl.doctor.v1 embedding the operator.v1 contract
+./target/release/assess doctor triage --json       # triage + next_actions
+./target/release/assess capabilities --json        # operator.v1, byte-for-byte `assess --describe`
 ./target/release/assess robot-docs guide
-./target/release/assess doctor health --json
-./target/release/assess doctor capabilities --json
-./target/release/assess doctor --robot-triage
 ```
+
+`assess doctor` exits `0` when healthy and `1` when unhealthy (`2` is reserved for
+usage errors). `doctor health --json` and `doctor robot-docs` keep working, and
+`assess --robot-triage` / `assess doctor --robot-triage` remain as deprecated aliases
+of `doctor triage --json` for at least one release. The old per-tool schema ids
+(`assess.doctor.{health,capabilities,triage}.v1`) are replaced by
+`schema_version: cmdrvl.doctor.v1`; the read-only detail fields (`checks`,
+`observed_paths`, `config_footprint`, `side_effects`) are still present. `assess
+capabilities --json` and bare `assess --json` now print the `operator.v1` document
+instead of the old doctor-capabilities payload.
 
 `assess doctor` does not read artifacts or policy files, construct bundles,
 evaluate rules, query or append witness ledgers, write `.doctor/` artifacts, or
@@ -164,7 +173,10 @@ Configuration footprint:
 
 - default: compact human-readable decision or refusal report
 - `--json`: canonical `assess.v0` JSON artifact or structured refusal envelope
-- `assess --json`: read-only capabilities JSON when no artifacts are supplied
+- `assess --json`: the `operator.v1` contract document when no artifacts are supplied
+- `--out PATH` (alias `--output`): write the report to `PATH` instead of stdout; stdout stays empty and the exit code is unchanged (a failed write is exit `2`)
+- No ANSI escapes are emitted when output is piped, `NO_COLOR` is set, or `TERM=dumb`
+- `assess witness query|count|last`: an empty result is exit `0` (`[]`, `{"count":0}`, `null`)
 - `--render summary`: one-line operator summary with decision/refusal, matched rule, risk code, tools, witness state, and refusal code
 - `--render summary-tsv`: stable header + row TSV summary for shell pipelines
 

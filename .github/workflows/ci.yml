@@ -48,6 +48,16 @@ jobs:
       - name: Run tests
         run: cargo test
 
+  ast-grep:
+    name: ast-grep (golden rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ast-grep (pinned)
+        run: npm install --global @ast-grep/cli@0.40.5
+      - name: Scan with golden-rule rules (errors fail the job)
+        run: ast-grep scan src
+
   ubs:
     name: UBS (critical-only)
     runs-on: ubuntu-latest
@@ -113,7 +123,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [fmt, clippy, test, ubs, build]
+    needs: [fmt, clippy, test, ast-grep, ubs, build]
     if: always()
     steps:
       - name: Check all jobs succeeded
@@ -128,6 +138,10 @@ jobs:
           fi
           if [[ "${{ needs.test.result }}" != "success" ]]; then
             echo "Test job failed"
+            exit 1
+          fi
+          if [[ "${{ needs.ast-grep.result }}" != "success" ]]; then
+            echo "ast-grep job failed"
             exit 1
           fi
           if [[ "${{ needs.ubs.result }}" != "success" ]]; then

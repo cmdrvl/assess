@@ -31,7 +31,7 @@ fn main() -> ExitCode {
             eprint!("{}", assess::cli::format_cli_error(&error));
             ExitCode::from(2)
         }
-        Err(assess::AssessError::Witness(error)) => {
+        Err(assess::AssessError::Witness(error) | assess::AssessError::Output(error)) => {
             eprintln!("{error}");
             ExitCode::from(2)
         }

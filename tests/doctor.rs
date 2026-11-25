@@ -65,10 +65,14 @@ fn doctor_health_json_is_read_only() -> Result<(), Box<dyn std::error::Error>> {
         .output()?;
     let payload = parse_stdout_json(&output)?;
 
-    assert_eq!(payload["schema"], "assess.doctor.health.v1");
-    assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["schema_version"], "cmdrvl.doctor.v1");
+    assert_eq!(payload["mode"], "health");
+    assert_eq!(payload["read_only_contract"], "cmdrvl.read_only_doctor.v1");
     assert_eq!(payload["tool"], "assess");
-    assert_eq!(payload["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(payload["tool_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(payload["healthy"], true);
+    assert_eq!(payload["findings"], serde_json::json!([]));
+    assert_eq!(output.status.code(), Some(0));
     assert_eq!(payload["ok"], true);
     assert_eq!(payload["read_only"], true);
     assert_eq!(payload["summary"]["checks_failed"], 0);
@@ -106,8 +110,10 @@ fn doctor_capabilities_json_has_no_fixers_or_side_effects() -> Result<(), Box<dy
         .output()?;
     let payload = parse_stdout_json(&output)?;
 
-    assert_eq!(payload["schema"], "assess.doctor.capabilities.v1");
-    assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["schema_version"], "cmdrvl.doctor.v1");
+    assert_eq!(payload["mode"], "capabilities");
+    assert_eq!(payload["read_only_contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["contract"]["schema_version"], "operator.v1");
     assert_eq!(payload["read_only"], true);
     assert_eq!(payload["config_footprint"]["self_contained"], true);
     assert_all_side_effects_false(side_effects(&payload)?)?;
@@ -126,6 +132,10 @@ fn doctor_capabilities_json_has_no_fixers_or_side_effects() -> Result<(), Box<dy
     assert_eq!(
         payload["agent_entrypoints"][1]["usage"],
         "assess capabilities --json"
+    );
+    assert_eq!(
+        payload["agent_entrypoints"][0]["usage"],
+        "assess doctor triage --json"
     );
     assert_eq!(payload["composition"]["role"], "decision_classifier");
     assert_eq!(
@@ -151,8 +161,15 @@ fn doctor_robot_triage_json_is_machine_readable() -> Result<(), Box<dyn std::err
         .output()?;
     let payload = parse_stdout_json(&output)?;
 
-    assert_eq!(payload["schema"], "assess.doctor.triage.v1");
-    assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["schema_version"], "cmdrvl.doctor.v1");
+    assert_eq!(payload["mode"], "triage");
+    assert_eq!(payload["read_only_contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["healthy"], true);
+    assert!(
+        payload["next_actions"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    );
     assert_eq!(payload["ok"], true);
     assert_eq!(payload["score"], 100);
     assert_eq!(payload["read_only"], true);
@@ -200,17 +217,20 @@ fn top_level_agent_aliases_are_read_only() -> Result<(), Box<dyn std::error::Err
         .args(["capabilities", "--json"])
         .output()?;
     let payload = parse_stdout_json(&capabilities)?;
-    assert_eq!(payload["schema"], "assess.doctor.capabilities.v1");
-    assert_eq!(
-        payload["agent_entrypoints"][0]["usage"],
-        "assess --robot-triage"
-    );
+    // Top-level `capabilities --json` is the operator.v1 document, byte-for-byte `--describe`.
+    assert_eq!(payload["schema_version"], "operator.v1");
+    assert_eq!(payload["name"], "assess");
+    let describe = assess_cmd_in(workspace.path(), &witness_path)
+        .arg("--describe")
+        .output()?;
+    assert_eq!(capabilities.stdout, describe.stdout);
 
     let triage = assess_cmd_in(workspace.path(), &witness_path)
         .arg("--robot-triage")
         .output()?;
     let payload = parse_stdout_json(&triage)?;
-    assert_eq!(payload["schema"], "assess.doctor.triage.v1");
+    assert_eq!(payload["schema_version"], "cmdrvl.doctor.v1");
+    assert_eq!(payload["mode"], "triage");
     assert_eq!(payload["read_only"], true);
 
     let docs = assess_cmd_in(workspace.path(), &witness_path)
@@ -235,6 +255,7 @@ fn doctor_help_is_available() -> Result<(), Box<dyn std::error::Error>> {
     assert!(stdout.contains("capabilities"));
     assert!(stdout.contains("robot-docs"));
     assert!(stdout.contains("--robot-triage"));
+    assert!(stdout.contains("triage"));
     Ok(())
 }
 
@@ -262,9 +283,9 @@ fn describe_manifest_includes_doctor() -> Result<(), Box<dyn std::error::Error>>
         .output()?;
 
     let payload = parse_stdout_json(&output)?;
-    assert_eq!(payload["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(payload["tool_version"], env!("CARGO_PKG_VERSION"));
     assert!(
-        payload["subcommands"]
+        payload["commands"]
             .as_array()
             .map(|subcommands| {
                 subcommands.iter().any(|entry| {

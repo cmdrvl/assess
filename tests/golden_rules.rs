@@ -5,13 +5,39 @@ use std::collections::BTreeSet;
 use assess::{cli::AssessExit, policy::DecisionBand, refusal::RefusalCode};
 use serde_json::Value;
 
+// Family contract: spine-rules golden_rules_suite! (operator.v1 validation, version and
+// subcommand parity, capabilities == describe, doctor cmdrvl.doctor.v1, flag dictionary,
+// ANSI-free piped output, bare invocation, empty witness query).
+spine_rules::golden_rules_suite! {
+    binary: env!("CARGO_BIN_EXE_assess"),
+    operator_json: include_str!("../operator.json"),
+    source_files: &["src/refusal/codes.rs"],
+    fixture_success_args: &[
+        "fixtures/artifacts/shape_compatible.json",
+        "fixtures/artifacts/rvl_real_change.json",
+        "fixtures/artifacts/verify_pass.json",
+        "--policy-id",
+        "loan_tape.monthly.v1",
+        "--json",
+        "--no-witness",
+    ],
+    fixture_refusal_args: &[
+        "fixtures/artifacts/does_not_exist.json",
+        "--policy-id",
+        "default.v0",
+        "--json",
+        "--no-witness",
+    ],
+    fixture_empty_query_args: &["witness", "query", "policy=no.such.policy.v9", "--json"],
+}
+
 #[test]
 fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::error::Error>> {
     let operator: Value = serde_json::from_str(include_str!("../operator.json"))?;
 
-    assert_eq!(operator["schema_version"], "operator.v0");
+    assert_eq!(operator["schema_version"], "operator.v1");
     assert_eq!(operator["name"], "assess");
-    assert_eq!(operator["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(operator["tool_version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
         operator["pipeline"]["upstream"],
         serde_json::json!(["shape", "rvl", "verify", "benchmark"])
@@ -49,7 +75,10 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
             .unwrap()
             .starts_with("PROCEED | PROCEED_WITH_RISK")
     );
-    assert_eq!(operator["exit_codes"]["1"]["meaning"], "ESCALATE");
+    assert_eq!(
+        operator["exit_codes"]["1"]["meaning"],
+        "ESCALATE (doctor: unhealthy)"
+    );
     assert!(
         operator["exit_codes"]["2"]["meaning"]
             .as_str()
@@ -98,7 +127,7 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
     assert_eq!(refusal_codes, expected_refusal_codes);
 
     assert_eq!(
-        operator["capabilities"]["formats"],
+        operator["formats"],
         serde_json::json!(["human", "json", "summary", "summary-tsv"])
     );
     assert_eq!(operator["options"][3]["flag"], "--render");
@@ -106,9 +135,9 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
         operator["options"][3]["values"],
         serde_json::json!(["summary", "summary-tsv"])
     );
-    let subcommands = operator["subcommands"]
+    let subcommands = operator["commands"]
         .as_array()
-        .expect("operator subcommands should be an array");
+        .expect("operator commands should be an array");
     let witness = subcommands
         .iter()
         .find(|entry| entry["name"] == "witness")
@@ -125,13 +154,12 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
         .find(|entry| entry["name"] == "robot-docs")
         .expect("top-level robot-docs alias should be declared");
     assert_eq!(robot_docs["usage"], "assess robot-docs guide");
-    assert_eq!(
-        operator["notes"],
-        serde_json::json!([
-            "Metadata surfaces (--describe, --schema, --version) are implemented.",
-            "Decision execution and witness execution are implemented.",
-            "Run mode supports compact summary and TSV summary render surfaces via --render."
-        ])
+    let notes = operator["notes"].as_array().expect("notes array");
+    assert!(
+        notes.iter().any(|n| n
+            .as_str()
+            .is_some_and(|n| n.contains("retryable is a local assess extension"))),
+        "the retryable extension must stay documented as local"
     );
 
     Ok(())
@@ -141,8 +169,20 @@ fn operator_manifest_describes_assess_contract() -> Result<(), Box<dyn std::erro
 fn golden_rule_files_match_spine_contracts() -> Result<(), Box<dyn std::error::Error>> {
     let exit_rule = support::read_text(support::rule_path("exit-code-range.yml"))?;
     assert!(exit_rule.contains("id: exit-code-range"));
-    assert!(exit_rule.contains("R-002: Spine tools use only exit codes 0, 1, 2."));
+    assert!(
+        exit_rule.contains(
+            "R-002: Spine tools use exit codes 0, 1, 2 and, only for a documented policy"
+        )
+    );
     assert!(exit_rule.contains("pattern: process::exit(255)"));
+    assert!(
+        !exit_rule.contains("pattern: process::exit(3)"),
+        "exit 3 is the BLOCK policy band, not a range violation"
+    );
+
+    let band_rule = support::read_text(support::rule_path("exit-code-policy-band.yml"))?;
+    assert!(band_rule.contains("id: exit-code-policy-band"));
+    assert!(band_rule.contains("pattern: process::exit(3)"));
 
     let hashmap_rule = support::read_text(support::rule_path("no-hashmap-in-output.yml"))?;
     assert!(hashmap_rule.contains("id: no-hashmap-in-output"));

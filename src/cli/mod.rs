@@ -49,7 +49,10 @@ pub struct DoctorInvocation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DoctorInvocationCommand {
     Health,
+    /// Top-level `capabilities`: the operator.v1 document (same bytes as `--describe`).
     Capabilities,
+    /// `doctor capabilities`: cmdrvl.doctor.v1 report embedding that document.
+    DoctorCapabilities,
     RobotDocs,
     RobotTriage,
 }
@@ -85,6 +88,7 @@ pub fn route(cli: Cli) -> Result<Route, RouteError> {
         json,
         render,
         no_witness,
+        out: _,
         describe,
         schema,
         version,
@@ -219,7 +223,8 @@ fn route_doctor(
     } else {
         match doctor.command.unwrap_or(DoctorCommand::Health) {
             DoctorCommand::Health => DoctorInvocationCommand::Health,
-            DoctorCommand::Capabilities => DoctorInvocationCommand::Capabilities,
+            DoctorCommand::Capabilities => DoctorInvocationCommand::DoctorCapabilities,
+            DoctorCommand::Triage => DoctorInvocationCommand::RobotTriage,
             DoctorCommand::RobotDocs => DoctorInvocationCommand::RobotDocs,
         }
     };

@@ -6,24 +6,35 @@ use crate::{
     paths, witness,
 };
 
+/// Local read-only discipline label; kept under `read_only_contract` (the
+/// `contract` key is reserved by cmdrvl.doctor.v1 for the operator.v1 document).
 const CONTRACT: &str = "cmdrvl.read_only_doctor.v1";
-const HEALTH_SCHEMA: &str = "assess.doctor.health.v1";
-const CAPABILITIES_SCHEMA: &str = "assess.doctor.capabilities.v1";
-const TRIAGE_SCHEMA: &str = "assess.doctor.triage.v1";
+const DOCTOR_SCHEMA_VERSION: &str = "cmdrvl.doctor.v1";
+const OPERATOR_SCHEMA: &str = "operator.v1";
+
+const CAPABILITIES_TEXT: &str = "assess capabilities\nread_only=true\nfixers=0\nagent_entrypoints=assess doctor triage --json,assess capabilities --json,assess robot-docs guide";
 
 pub fn execute(invocation: DoctorInvocation) -> Execution {
     match invocation.command {
         DoctorInvocationCommand::Health if invocation.json => json_execution(health_payload()),
         DoctorInvocationCommand::Health => {
-            Execution::new(AssessExit::Proceed, health_summary(&health_payload()))
+            let payload = health_payload();
+            Execution::new(exit_for(&payload), health_summary(&payload))
         }
+        // Top-level `capabilities` is the operator.v1 document: exactly the bytes
+        // `--describe` prints, so the two surfaces cannot drift.
         DoctorInvocationCommand::Capabilities if invocation.json => {
+            Execution::new(AssessExit::Proceed, OPERATOR_JSON)
+        }
+        DoctorInvocationCommand::Capabilities => {
+            Execution::new(AssessExit::Proceed, CAPABILITIES_TEXT)
+        }
+        DoctorInvocationCommand::DoctorCapabilities if invocation.json => {
             json_execution(capabilities_payload())
         }
-        DoctorInvocationCommand::Capabilities => Execution::new(
-            AssessExit::Proceed,
-            "assess capabilities\nread_only=true\nfixers=0\nagent_entrypoints=assess --robot-triage,assess capabilities --json,assess robot-docs guide",
-        ),
+        DoctorInvocationCommand::DoctorCapabilities => {
+            Execution::new(AssessExit::Proceed, CAPABILITIES_TEXT)
+        }
         DoctorInvocationCommand::RobotDocs => {
             Execution::new(AssessExit::Proceed, robot_docs_text())
         }
@@ -31,15 +42,79 @@ pub fn execute(invocation: DoctorInvocation) -> Execution {
     }
 }
 
+/// Doctor exit code: 0 healthy, 1 unhealthy (never 2; 2 is usage errors only).
+fn exit_for(payload: &Value) -> AssessExit {
+    if payload
+        .get("healthy")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        AssessExit::Proceed
+    } else {
+        AssessExit::Unhealthy
+    }
+}
+
 fn json_execution(payload: Value) -> Execution {
-    Execution::new(AssessExit::Proceed, json_string(&payload))
+    Execution::new(exit_for(&payload), json_string(&payload))
+}
+
+/// Turn a legacy-shaped payload into a cmdrvl.doctor.v1 report: add the
+/// required envelope fields, drop the old per-tool `schema` id, and move the
+/// old `contract` string out of the way. Extra read-only detail stays as
+/// additional keys (the schema allows them).
+fn into_doctor_report(mut payload: Value, mode: &str, findings: Vec<Value>) -> Value {
+    let healthy = !findings
+        .iter()
+        .any(|f| f.get("severity").and_then(Value::as_str) == Some("error"));
+    if let Some(obj) = payload.as_object_mut() {
+        obj.remove("schema");
+        obj.remove("contract");
+        obj.insert("read_only_contract".into(), json!(CONTRACT));
+        obj.insert("schema_version".into(), json!(DOCTOR_SCHEMA_VERSION));
+        obj.insert("mode".into(), json!(mode));
+        obj.insert("tool_version".into(), json!(env!("CARGO_PKG_VERSION")));
+        obj.insert("healthy".into(), json!(healthy));
+        obj.insert("ok".into(), json!(healthy));
+        obj.insert("findings".into(), Value::Array(findings));
+    }
+    payload
+}
+
+/// Like [`into_doctor_report`] but keeps an already-inserted `contract` object
+/// (capabilities mode embeds the operator.v1 document there).
+fn into_doctor_report_keep_contract(mut payload: Value, mode: &str, findings: Vec<Value>) -> Value {
+    let contract = payload
+        .as_object_mut()
+        .and_then(|obj| obj.remove("contract"));
+    let mut report = into_doctor_report(payload, mode, findings);
+    if let (Some(obj), Some(contract)) = (report.as_object_mut(), contract) {
+        obj.insert("contract".into(), contract);
+    }
+    report
+}
+
+/// One error finding per failed health check.
+fn findings_from_checks(checks: &[Value]) -> Vec<Value> {
+    checks
+        .iter()
+        .filter(|check| !check.get("ok").and_then(Value::as_bool).unwrap_or(false))
+        .map(|check| {
+            json!({
+                "id": check.get("id").cloned().unwrap_or(Value::Null),
+                "severity": "error",
+                "message": check.get("message").cloned().unwrap_or(Value::Null),
+                "fix": "Reinstall assess; the compiled manifest or schemas are inconsistent."
+            })
+        })
+        .collect()
 }
 
 fn json_string(payload: &Value) -> String {
     match serde_json::to_string(payload) {
         Ok(encoded) => encoded,
         Err(error) => format!(
-            "{{\"schema\":\"{HEALTH_SCHEMA}\",\"contract\":\"{CONTRACT}\",\"tool\":\"assess\",\"ok\":false,\"error\":\"json encode failed: {error}\"}}"
+            "{{\"schema_version\":\"{DOCTOR_SCHEMA_VERSION}\",\"tool\":\"assess\",\"healthy\":false,\"error\":\"json encode failed: {error}\"}}"
         ),
     }
 }
@@ -53,12 +128,12 @@ fn health_payload() -> Value {
     let total = checks.len();
     let passed = total.saturating_sub(failed);
 
-    json!({
-        "schema": HEALTH_SCHEMA,
+    let findings = findings_from_checks(&checks);
+    let payload = json!({
+        "schema": "legacy",
         "contract": CONTRACT,
         "tool": "assess",
         "version": env!("CARGO_PKG_VERSION"),
-        "ok": failed == 0,
         "read_only": true,
         "summary": {
             "checks_total": total,
@@ -70,12 +145,28 @@ fn health_payload() -> Value {
         "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
         "fixers": []
-    })
+    });
+    into_doctor_report(payload, "health", findings)
 }
 
 fn capabilities_payload() -> Value {
+    let checks = health_checks();
+    let findings = findings_from_checks(&checks);
+    let mut payload = capabilities_detail();
+    if let Some(obj) = payload.as_object_mut() {
+        // The embedded contract is the operator.v1 document, identical to
+        // `assess capabilities --json` / `assess --describe`.
+        obj.insert(
+            "contract".into(),
+            serde_json::from_str(OPERATOR_JSON).unwrap_or(Value::Null),
+        );
+    }
+    into_doctor_report_keep_contract(payload, "capabilities", findings)
+}
+
+fn capabilities_detail() -> Value {
     json!({
-        "schema": CAPABILITIES_SCHEMA,
+        "schema": "legacy",
         "contract": CONTRACT,
         "tool": "assess",
         "version": env!("CARGO_PKG_VERSION"),
@@ -83,14 +174,14 @@ fn capabilities_payload() -> Value {
         "agent_entrypoints": [
             {
                 "name": "robot-triage",
-                "usage": "assess --robot-triage",
-                "output_schema": TRIAGE_SCHEMA,
+                "usage": "assess doctor triage --json",
+                "output_schema": DOCTOR_SCHEMA_VERSION,
                 "description": "Single-call read-only health, command, and next-step report"
             },
             {
                 "name": "capabilities",
                 "usage": "assess capabilities --json",
-                "output_schema": CAPABILITIES_SCHEMA,
+                "output_schema": OPERATOR_SCHEMA,
                 "description": "Machine-readable CLI, refusal, side-effect, and schema contract"
             },
             {
@@ -146,13 +237,13 @@ fn capabilities_payload() -> Value {
             {
                 "name": "doctor-health",
                 "usage": "assess doctor health --json",
-                "output_schema": HEALTH_SCHEMA,
+                "output_schema": DOCTOR_SCHEMA_VERSION,
                 "description": "Report compiled manifest, embedded schema, and read-only contract health"
             },
             {
                 "name": "doctor-capabilities",
                 "usage": "assess doctor capabilities --json",
-                "output_schema": CAPABILITIES_SCHEMA,
+                "output_schema": DOCTOR_SCHEMA_VERSION,
                 "description": "Describe doctor commands, exit codes, side-effect boundaries, and disabled fixers"
             },
             {
@@ -162,9 +253,15 @@ fn capabilities_payload() -> Value {
                 "description": "Emit concise machine-oriented usage notes"
             },
             {
+                "name": "doctor-triage",
+                "usage": "assess doctor triage --json",
+                "output_schema": DOCTOR_SCHEMA_VERSION,
+                "description": "Canonical triage report; `assess doctor --robot-triage` and `assess --robot-triage` are deprecated aliases"
+            },
+            {
                 "name": "doctor-robot-triage",
                 "usage": "assess doctor --robot-triage",
-                "output_schema": TRIAGE_SCHEMA,
+                "output_schema": DOCTOR_SCHEMA_VERSION,
                 "description": "Emit a compact triage report for automation"
             },
             {
@@ -188,8 +285,8 @@ fn capabilities_payload() -> Value {
         ],
         "exit_codes": {
             "0": "PROCEED, PROCEED_WITH_RISK, metadata emitted successfully, or read-only introspection succeeded",
-            "1": "ESCALATE",
-            "2": "structured refusal, CLI usage error, or witness I/O error (never a policy verdict)",
+            "1": "ESCALATE (doctor: unhealthy)",
+            "2": "structured refusal, CLI usage error, or witness query I/O error (never a policy verdict)",
             "3": "BLOCK (valid policy verdict, distinct from refusal)"
         },
         "refusal_codes": [
@@ -225,9 +322,9 @@ fn capabilities_payload() -> Value {
         "schemas": {
             "decision": "assess.v0",
             "policy": "policy.v0",
-            "doctor_health": HEALTH_SCHEMA,
-            "doctor_capabilities": CAPABILITIES_SCHEMA,
-            "doctor_triage": TRIAGE_SCHEMA
+            "doctor_health": DOCTOR_SCHEMA_VERSION,
+            "doctor_capabilities": DOCTOR_SCHEMA_VERSION,
+            "doctor_triage": DOCTOR_SCHEMA_VERSION
         },
         "composition": {
             "family": {
@@ -296,32 +393,33 @@ fn triage_payload() -> Value {
         .cloned()
         .unwrap_or_else(|| Value::Array(Vec::new()));
 
-    json!({
-        "schema": TRIAGE_SCHEMA,
+    let findings = findings_from_checks(checks.as_array().map(Vec::as_slice).unwrap_or_default());
+    let payload = json!({
+        "schema": "legacy",
         "contract": CONTRACT,
         "tool": "assess",
         "version": env!("CARGO_PKG_VERSION"),
-        "ok": ok,
         "score": if ok { 100 } else { 0 },
         "read_only": true,
         "checks": checks,
         "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
         "fixers": [],
-        "recommended_next_steps": [
+        "next_actions": [
             "Use assess capabilities --json for the full machine-readable CLI contract.",
             "Use assess robot-docs guide for the compact agent guide.",
             "Use assess --schema for the assess.v0 decision output schema.",
             "Do not expect assess doctor to read artifacts, load policies, evaluate rules, query or append witness records, or emit portable evidence."
         ]
-    })
+    });
+    into_doctor_report(payload, "triage", findings)
 }
 
 fn health_checks() -> Vec<Value> {
     let manifest = serde_json::from_str::<Value>(OPERATOR_JSON).ok();
     let manifest_version = manifest
         .as_ref()
-        .and_then(|value| value.get("version"))
+        .and_then(|value| value.get("tool_version"))
         .and_then(Value::as_str)
         .unwrap_or_default();
     let output_schema = manifest
@@ -332,7 +430,7 @@ fn health_checks() -> Vec<Value> {
         .unwrap_or_default();
     let doctor_declared = manifest
         .as_ref()
-        .and_then(|value| value.get("subcommands"))
+        .and_then(|value| value.get("commands"))
         .and_then(Value::as_array)
         .map(|subcommands| {
             subcommands
@@ -462,7 +560,7 @@ fn robot_docs_text() -> &'static str {
     "assess robot-docs guide\n\
 contract: cmdrvl.read_only_doctor.v1\n\
 agent_entrypoints:\n\
-  assess --robot-triage\n\
+  assess doctor triage --json  (deprecated alias: assess --robot-triage)\n\
   assess capabilities --json\n\
   assess robot-docs guide\n\
 decision:\n\
@@ -474,14 +572,16 @@ witness:\n\
 doctor_compat:\n\
   assess doctor health --json\n\
   assess doctor capabilities --json\n\
-  assess doctor --robot-triage\n\
+  assess doctor triage --json\n\
+  assess doctor --robot-triage  (deprecated alias)\n\
+doctor_exit: 0 healthy, 1 unhealthy, 2 usage error\n\
 composition:\n\
   assess shape.json rvl.json verify.json benchmark.json --policy <policy.yaml> --json > decision.json\n\
   pack seal shape.json rvl.json verify.json benchmark.json decision.json --output evidence/\n\
 exit_codes:\n\
   0 = PROCEED, PROCEED_WITH_RISK, or read-only metadata success\n\
-  1 = ESCALATE\n\
-  2 = refusal, CLI usage error, or witness I/O error (never a policy verdict)\n\
+  1 = ESCALATE (doctor: unhealthy)\n\
+  2 = refusal, CLI usage error, or witness query I/O error (never a policy verdict)\n\
   3 = BLOCK (valid policy verdict, distinct from refusal)\n\
 read_only:\n\
   - does not read stdin, artifacts, policies, schemas from disk, or witness ledgers\n\
@@ -493,4 +593,75 @@ next_steps:\n\
   - use assess capabilities --json for the full machine-readable command/refusal contract\n\
   - use assess --describe for the full operator manifest\n\
   - use assess --schema for the decision artifact schema"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use spine_rules::doctor::{DoctorMode, check_doctor_run};
+
+    fn failing_checks() -> Vec<Value> {
+        vec![
+            check("operator_manifest_embedded", true, "parses"),
+            check("assess_schema_embedded", false, "schema does not parse"),
+        ]
+    }
+
+    #[test]
+    fn failed_check_makes_an_unhealthy_report_that_exits_one() {
+        let checks = failing_checks();
+        let findings = findings_from_checks(&checks);
+        let report = into_doctor_report(json!({"tool": "assess"}), "health", findings);
+
+        assert_eq!(report["healthy"], false);
+        assert_eq!(report["findings"][0]["id"], "assess_schema_embedded");
+        assert_eq!(report["findings"][0]["severity"], "error");
+        assert_eq!(exit_for(&report).code(), 1);
+
+        // Conforms to cmdrvl.doctor.v1 only with exit 1 (unhealthy != usage error 2).
+        let bytes = serde_json::to_vec(&report).unwrap();
+        assert!(check_doctor_run(DoctorMode::Health, &bytes, Some(1)).is_empty());
+        let wrong = check_doctor_run(DoctorMode::Health, &bytes, Some(2)).join("\n");
+        assert!(wrong.contains("requires 1"), "{wrong}");
+        let wrong = check_doctor_run(DoctorMode::Health, &bytes, Some(0)).join("\n");
+        assert!(wrong.contains("requires 1"), "{wrong}");
+    }
+
+    #[test]
+    fn healthy_report_exits_zero_and_validates_in_all_modes() {
+        for (mode, label) in [
+            (DoctorMode::Health, "health"),
+            (DoctorMode::Triage, "triage"),
+        ] {
+            let payload = match label {
+                "health" => health_payload(),
+                _ => triage_payload(),
+            };
+            assert_eq!(exit_for(&payload).code(), 0);
+            let bytes = serde_json::to_vec(&payload).unwrap();
+            let v = check_doctor_run(mode, &bytes, Some(0));
+            assert!(v.is_empty(), "{label}: {v:?}");
+        }
+        let caps = capabilities_payload();
+        let bytes = serde_json::to_vec(&caps).unwrap();
+        let v = check_doctor_run(DoctorMode::Capabilities, &bytes, Some(0));
+        assert!(v.is_empty(), "capabilities: {v:?}");
+        // The embedded contract is exactly the operator document.
+        assert_eq!(
+            caps["contract"],
+            serde_json::from_str::<Value>(OPERATOR_JSON).unwrap()
+        );
+    }
+
+    #[test]
+    fn unhealthy_triage_carries_next_actions() {
+        let findings = findings_from_checks(&failing_checks());
+        let report = into_doctor_report(
+            json!({"tool": "assess", "next_actions": ["reinstall assess"]}),
+            "triage",
+            findings,
+        );
+        let bytes = serde_json::to_vec(&report).unwrap();
+        assert!(check_doctor_run(DoctorMode::Triage, &bytes, Some(1)).is_empty());
+    }
 }

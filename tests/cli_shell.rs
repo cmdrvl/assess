@@ -53,12 +53,13 @@ fn json_only_returns_capabilities_contract() -> Result<(), Box<dyn std::error::E
 
     assert_eq!(execution.exit_code, 0);
     let payload: serde_json::Value = serde_json::from_str(execution.stdout.trim())?;
-    assert_eq!(payload["schema"], "assess.doctor.capabilities.v1");
+    // Bare `assess --json` prints the operator.v1 document (same as `capabilities --json`).
+    assert_eq!(payload["schema_version"], "operator.v1");
+    assert_eq!(payload["name"], "assess");
     assert_eq!(
-        payload["agent_entrypoints"][0]["usage"],
-        "assess --robot-triage"
+        execution.stdout,
+        format!("{}\n", assess::OPERATOR_JSON.trim_end())
     );
-    assert_eq!(payload["composition"]["role"], "decision_classifier");
     Ok(())
 }
 
