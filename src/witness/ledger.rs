@@ -33,7 +33,12 @@ pub fn load_from_path(path: &Path) -> Result<Vec<WitnessRecord>, String> {
     let file = match fs::File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(format!("assess: witness: failed to read ledger: {error}")),
+        Err(error) => {
+            return Err(format!(
+                "assess: witness: failed to read ledger {}: {error}",
+                path.display()
+            ));
+        }
     };
 
     let mut records = Vec::new();
@@ -41,7 +46,17 @@ pub fn load_from_path(path: &Path) -> Result<Vec<WitnessRecord>, String> {
         let line = match line {
             Ok(line) if !line.trim().is_empty() => line,
             Ok(_) => continue,
-            Err(_) => continue,
+            // A line that is not valid UTF-8 is consumed by the reader, so skipping it is safe
+            // and matches how malformed JSON lines are treated. Any other read error (a
+            // directory, a permission or device failure) repeats on every call, so continuing
+            // here spins forever: return it instead.
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => continue,
+            Err(error) => {
+                return Err(format!(
+                    "assess: witness: failed to read ledger {}: {error}",
+                    path.display()
+                ));
+            }
         };
 
         let Ok(record) = serde_json::from_str::<WitnessRecord>(&line) else {
