@@ -107,6 +107,7 @@ Options:
   --no-witness           Suppress witness ledger recording
   --describe             Print operator.json and exit 0
   --schema               Print assess.v0 JSON Schema and exit 0
+  --input-schema         Print policy.v0 JSON Schema for authored policies and exit 0
   --version              Print assess <semver> and exit 0
   --robot-triage         Print read-only machine triage JSON and exit 0
 ```

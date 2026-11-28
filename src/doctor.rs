@@ -12,7 +12,7 @@ const CONTRACT: &str = "cmdrvl.read_only_doctor.v1";
 const DOCTOR_SCHEMA_VERSION: &str = "cmdrvl.doctor.v1";
 const OPERATOR_SCHEMA: &str = "operator.v1";
 
-const CAPABILITIES_TEXT: &str = "assess capabilities\nread_only=true\nfixers=0\nagent_entrypoints=assess doctor triage --json,assess capabilities --json,assess robot-docs guide";
+const CAPABILITIES_TEXT: &str = "assess capabilities\nread_only=true\nfixers=0\nagent_entrypoints=assess doctor triage --json,assess capabilities --json,assess robot-docs guide\npolicy_input_schema=assess --input-schema\ndecision_bands=PROCEED,PROCEED_WITH_RISK,ESCALATE,BLOCK\nmatcher_keys=outcome,outcome_in,refusal,signals";
 
 pub fn execute(invocation: DoctorInvocation) -> Execution {
     match invocation.command {
@@ -229,6 +229,12 @@ fn capabilities_detail() -> Value {
                 "description": "Emit assess.v0 JSON Schema before normal validation"
             },
             {
+                "name": "input-schema",
+                "usage": "assess --input-schema",
+                "output_schema": "json-schema",
+                "description": "Emit policy.v0 JSON Schema for authored policy YAML before normal validation"
+            },
+            {
                 "name": "version",
                 "usage": "assess --version",
                 "output_schema": "text/plain",
@@ -322,9 +328,16 @@ fn capabilities_detail() -> Value {
         "schemas": {
             "decision": "assess.v0",
             "policy": "policy.v0",
+            "policy_input": "policy.v0",
             "doctor_health": DOCTOR_SCHEMA_VERSION,
             "doctor_capabilities": DOCTOR_SCHEMA_VERSION,
             "doctor_triage": DOCTOR_SCHEMA_VERSION
+        },
+        "policy_authoring": {
+            "schema": "assess --input-schema",
+            "example": "assess fixtures/artifacts/shape_compatible.json --policy policy.yaml --json --no-witness",
+            "matcher_keys": ["outcome", "outcome_in", "refusal", "signals"],
+            "decision_bands": ["PROCEED", "PROCEED_WITH_RISK", "ESCALATE", "BLOCK"]
         },
         "composition": {
             "family": {
@@ -592,7 +605,21 @@ fix_mode:\n\
 next_steps:\n\
   - use assess capabilities --json for the full machine-readable command/refusal contract\n\
   - use assess --describe for the full operator manifest\n\
-  - use assess --schema for the decision artifact schema"
+  - use assess --schema for the decision artifact schema\n\
+policy_authoring:\n\
+  schema: assess --input-schema\n\
+  minimal_example:\n\
+    schema_version: 1\n\
+    policy_id: example.v0\n\
+    policy_version: 1\n\
+    rules:\n\
+      - name: default_proceed\n\
+        default: true\n\
+        then:\n\
+          decision_band: PROCEED\n\
+  command: assess fixtures/artifacts/shape_compatible.json --policy policy.yaml --json --no-witness\n\
+  matcher_keys: outcome, outcome_in, refusal, signals\n\
+  decision_bands: PROCEED, PROCEED_WITH_RISK, ESCALATE, BLOCK"
 }
 
 #[cfg(test)]

@@ -15,6 +15,21 @@ Decision examples:
 Witness examples:
   assess witness last --json
   assess witness query policy=loan_tape.monthly.v1 --json
+
+Policy authoring:
+  assess --input-schema
+  assess fixtures/artifacts/shape_compatible.json --policy policy.yaml --json --no-witness
+  minimal policy.yaml:
+    schema_version: 1
+    policy_id: example.v0
+    policy_version: 1
+    rules:
+      - name: default_proceed
+        default: true
+        then:
+          decision_band: PROCEED
+  decision bands: PROCEED | PROCEED_WITH_RISK | ESCALATE | BLOCK
+  matcher keys: outcome | outcome_in | refusal | signals
 ";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -84,6 +99,13 @@ pub struct Cli {
 
     #[arg(long, global = true, help = "Print the assess.v0 JSON Schema and exit")]
     pub schema: bool,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Print the policy.v0 input JSON Schema and exit"
+    )]
+    pub input_schema: bool,
 
     #[arg(long, global = true, help = "Print assess version and exit")]
     pub version: bool,

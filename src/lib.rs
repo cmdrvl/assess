@@ -87,6 +87,7 @@ fn execute_route(cli: Cli) -> Result<Execution, AssessError> {
         Ok(Route::Help) => Ok(Execution::new(AssessExit::Proceed, cli::long_help())),
         Ok(Route::Describe) => Ok(Execution::new(AssessExit::Proceed, OPERATOR_JSON)),
         Ok(Route::Schema) => Ok(Execution::new(AssessExit::Proceed, ASSESS_SCHEMA_JSON)),
+        Ok(Route::InputSchema) => Ok(Execution::new(AssessExit::Proceed, POLICY_SCHEMA_JSON)),
         Ok(Route::Version) => Ok(Execution::new(
             AssessExit::Proceed,
             format!("assess {}", env!("CARGO_PKG_VERSION")),

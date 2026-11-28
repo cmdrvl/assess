@@ -20,6 +20,7 @@ pub enum Route {
     Help,
     Describe,
     Schema,
+    InputSchema,
     Version,
     Doctor(DoctorInvocation),
     Run(RunCommand),
@@ -91,6 +92,7 @@ pub fn route(cli: Cli) -> Result<Route, RouteError> {
         out: _,
         describe,
         schema,
+        input_schema,
         version,
         robot_triage,
         command,
@@ -102,6 +104,10 @@ pub fn route(cli: Cli) -> Result<Route, RouteError> {
 
     if schema {
         return Ok(Route::Schema);
+    }
+
+    if input_schema {
+        return Ok(Route::InputSchema);
     }
 
     if version {

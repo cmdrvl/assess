@@ -11,6 +11,7 @@
     "usage": [
       "assess <ARTIFACT>... --policy <POLICY> [OPTIONS]",
       "assess <ARTIFACT>... --policy-id <ID> [OPTIONS]",
+      "assess --input-schema",
       "assess --robot-triage",
       "assess capabilities --json",
       "assess robot-docs guide",
@@ -89,6 +90,12 @@
       "description": "Print the assess.v0 JSON Schema and exit 0 before normal validation"
     },
     {
+      "name": "input_schema",
+      "flag": "--input-schema",
+      "type": "flag",
+      "description": "Print the policy.v0 JSON Schema for authored policy YAML and exit 0 before normal validation"
+    },
+    {
       "name": "version",
       "flag": "--version",
       "type": "flag",
@@ -96,6 +103,21 @@
     }
   ],
   "commands": [
+    {
+      "name": "run",
+      "usage": "assess <ARTIFACT>... --policy <POLICY> [OPTIONS]",
+      "description": "Classify artifacts against an authored policy YAML file",
+      "output_mode": "mixed",
+      "output_schema": "assess.v0",
+      "status": "implemented",
+      "read_only": false,
+      "authored_inputs": [{
+        "name": "policy",
+        "schema_flag": "--input-schema",
+        "example": "assess fixtures/artifacts/shape_compatible.json --policy policy.yaml --json --no-witness",
+        "allowed_values": ["PROCEED", "PROCEED_WITH_RISK", "ESCALATE", "BLOCK"]
+      }]
+    },
     {
       "name": "capabilities",
       "usage": "assess capabilities --json",
@@ -215,6 +237,13 @@
   "capabilities": {
     "profile_aware": false,
     "streaming": false,
+    "policy_authoring": {
+      "schema": "assess --input-schema",
+      "minimal_policy_yaml": "schema_version: 1\npolicy_id: example.v0\npolicy_version: 1\nrules:\n  - name: default_proceed\n    default: true\n    then:\n      decision_band: PROCEED",
+      "command": "assess fixtures/artifacts/shape_compatible.json --policy policy.yaml --json --no-witness",
+      "matcher_keys": ["outcome", "outcome_in", "refusal", "signals"],
+      "decision_bands": ["PROCEED", "PROCEED_WITH_RISK", "ESCALATE", "BLOCK"]
+    },
     "witness": {
       "ambient_recording": "implemented_after-successful-decision-execution",
       "query_subcommands": "implemented",
@@ -222,7 +251,8 @@
     }
   },
   "notes": [
-    "Metadata surfaces (--describe, --schema, --version) are implemented.",
+    "Metadata surfaces (--describe, --schema, --input-schema, --version) are implemented.",
+    "Policy authors can use --input-schema for policy.v0, then the minimal policy YAML example and matcher keys in robot-docs guide and --help.",
     "Decision execution and witness execution are implemented.",
     "Run mode supports compact summary and TSV summary render surfaces via --render.",
     "exit_codes[].retryable is a local assess extension (not part of operator.v1): every code is false because re-running the same inputs never changes a verdict or a refusal."

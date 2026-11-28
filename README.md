@@ -95,6 +95,7 @@ Inspect metadata:
 ```bash
 ./target/release/assess --describe
 ./target/release/assess --schema
+./target/release/assess --input-schema
 ./target/release/assess --version
 ./target/release/assess --robot-triage
 ./target/release/assess capabilities --json
@@ -260,6 +261,12 @@ Use `assess` when the question is:
 ## Policies
 
 Policies are YAML files conforming to the `policy.v0` schema (`schemas/policy.v0.schema.json`).
+
+To author one without reading the source, use `assess --input-schema` for the JSON Schema and
+`assess robot-docs guide` or `assess --help` for the same minimal policy example. A policy has
+`schema_version`, `policy_id`, `policy_version`, and ordered `rules`; matchers use `outcome`,
+`outcome_in`, `refusal`, and `signals`. Decision bands are `PROCEED`, `PROCEED_WITH_RISK`,
+`ESCALATE`, and `BLOCK`.
 
 A policy declares:
 

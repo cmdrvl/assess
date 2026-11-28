@@ -24,7 +24,7 @@ thiserror = "2"
 
 [dev-dependencies]
 jsonschema = "0.42"
-spine-rules = { git = "https://github.com/cmdrvl/spine-rules", rev = "5ec6622", version = "=0.3.1" }
+spine-rules = { git = "https://github.com/cmdrvl/spine-rules", rev = "f3e6dea", version = "=0.3.1" }
 
 [profile.release]
 opt-level = "z"
