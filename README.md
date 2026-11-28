@@ -352,6 +352,8 @@ cargo test
 
 Releases are cut automatically via `.github/workflows/release.yml` when `Cargo.toml` version changes on `main`. The workflow builds cross-platform binaries (5 targets), generates SHA256SUMS with cosign signing, SBOM, and SLSA provenance, and publishes to GitHub Releases and the Homebrew tap.
 
+For the full toolchain guide, see the [Agent Operator Guide](https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md). Run `assess --describe` for this tool's machine-readable contract.
+
 ---
 
 *`assess` is part of the open-source toolchain from the [CMD+RVL](https://cmdrvl.com) lineage and AI enablement practice. MIT-licensed. Contributions welcome from any practice or stack.*
